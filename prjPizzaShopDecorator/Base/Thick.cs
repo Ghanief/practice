@@ -13,7 +13,7 @@ namespace prjPizzaShopDecorator
 
         public override decimal GetPrice()
         {
-            return 30;
+            return 50;
         }
     }
 }
