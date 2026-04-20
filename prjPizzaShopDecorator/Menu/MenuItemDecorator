@@ -1,0 +1,35 @@
+using system;
+
+namespace prjPizzaShopDecorator
+{
+    // Important class this, hay
+    // You have an MenuItem and it will then contain the other MenuItems
+    // Such as the toppings, which will be wrapping the main menuItem
+    // which is the pizzzaa bases
+    abstract class MenuItemDecorator : MenuItem
+    {
+        // Reference to the object that is being wrapped (decorated) 
+        MenuItem Decorated = null;
+
+        protected string Description = " ";
+        protected decimal  Price = 0;
+
+        // Constructor accepts the menuItem to stack decorators
+        public MenuItemDecorator(MenuItemDecorator item)
+        {
+            Decorated = item;
+        }
+
+        // Combine the wrapped item (pizza base) with the description of the other toppings
+        public override string GetDescription()
+        {
+            return Decorated.GetDescription() + "topped with " + Description;
+        }
+
+        // Adds the total price of the toppings to the total of price of the wrapped item
+        public override decimal GetPrice()
+        {
+            return Price + Decorated.GetPrice();
+        }
+    }
+}
