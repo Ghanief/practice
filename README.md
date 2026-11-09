@@ -729,37 +729,42 @@ The video shows the server starting, Postman requests, JWT authentication, and H
 
 ![Part 2 frontend tests: 18 test files and 36 tests passed](https://github.com/user-attachments/assets/854bdd94-6f64-4eed-8f7f-ce01f0db6e18)
 
-## Part 3 - DevSecOps, monitoring and finalisation
+
+## 🚀 Part 3 - DevSecOps, monitoring and finalisation
 
 Part 3 extends the existing Part 1 backend and Part 2 marketplace. It adds an indicative freelancer tax view, security controls, container deployment, and cloud-capable logging. Payments remain simulated.
 
-### SARS tax estimation and income dashboard
+### 💰 SARS tax estimation and income dashboard
 
 The freelancer income response includes an estimated tax reserve for the current SARS tax year. The backend applies the individual marginal tax brackets for the schedule implemented in `backend/utils/taxEstimator.js`, calculates tax progressively across the brackets, applies the primary rebate, and returns the estimated tax, effective rate, estimated income after tax, and bracket breakdown. The income used is completed HustleHub+ platform income recorded during the tax year. The frontend presents these values in the freelancer income area and labels the tax year and ZAR amounts. The implementation follows the [SARS individual income-tax rates](https://www.sars.gov.za/tax-rates/income-tax/rates-of-tax-for-individuals/).
 
 This is an estimate for planning and demonstration only. It assumes an individual under 65 and does not include other income, allowable expenses, deductions, credits, or provisional-tax payments. It is not tax advice and must not be treated as the user’s final tax liability. Tax information is shown with freelancer income; clients do not have platform income to estimate.
 
-### GitHub Actions and static code analysis
+---
 
-Static code analysis examines source code without running the application. It helps identify potentially insecure coding patterns, programming mistakes, and maintainability problems before those changes reach users. This is especially useful for HustleHub+ because the backend handles authentication, account permissions, bookings, and transaction records. 
+### 🔍 GitHub Actions and static code analysis
+
+Static code analysis examines source code without running the application. It helps identify potentially insecure coding patterns, programming mistakes, and maintainability problems before those changes reach users. This is especially useful for HustleHub+ because the backend handles authentication, account permissions, bookings, and transaction records.
 
 Part 3 distinguishes the following checks rather than treating them as interchangeable:
 
 | Check | Purpose in HustleHub+ | Current repository status |
 | --- | --- | --- |
-| **CodeQL security analysis (SAST)** | Analyse JavaScript/TypeScript code for recognised vulnerabilities and suspicious data flows, such as untrusted inputs reaching sensitive operations. Findings need developer review because automated alerts can be false positives. | **Not yet evidenced.** No CodeQL workflow or scan report is included in the supplied repository. |
-| **Backend syntax analysis** | `npm run build` runs `backend/scripts/checkSyntax.js`, which uses Node.js `--check` on backend `.js` files to catch syntax errors without starting the API. | Implemented; this is a syntax check, **not** a vulnerability scan. |
-| **Frontend TypeScript check** | `npm run build` runs `tsc -b` before Vite builds the frontend, identifying TypeScript type errors. | Configured in `frontend/Package.json`; this does not replace security analysis. |
-| **Prettier formatting check** | `npm run format:check` checks selected files for consistent code formatting. | Configured in the package scripts; formatting alone does not prove code is secure. |
-| **Automated tests** | Backend Node tests and frontend Vitest tests check expected application behaviour, including security-control tests. | Test files and scripts exist; test results should be recorded from the current revision. |
+| **🛡️ CodeQL security analysis (SAST)** | Analyse JavaScript/TypeScript code for recognised vulnerabilities and suspicious data flows, such as untrusted inputs reaching sensitive operations. Findings need developer review because automated alerts can be false positives. | **Not yet evidenced.** No CodeQL workflow or scan report is included in the supplied repository. |
+| **🧩 Backend syntax analysis** | `npm run build` runs `backend/scripts/checkSyntax.js`, which uses Node.js `--check` on backend `.js` files to catch syntax errors without starting the API. | Implemented; this is a syntax check, **not** a vulnerability scan. |
+| **🔠 Frontend TypeScript check** | `npm run build` runs `tsc -b` before Vite builds the frontend, identifying TypeScript type errors. | Configured in `frontend/Package.json`; this does not replace security analysis. |
+| **🎨 Prettier formatting check** | `npm run format:check` checks selected files for consistent code formatting. | Configured in the package scripts; formatting alone does not prove code is secure. |
+| **🧪 Automated tests** | Backend Node tests and frontend Vitest tests check expected application behaviour, including security-control tests. | Test files and scripts exist; test results should be recorded from the current revision. |
 
-**How the planned DevSecOps workflow should work:** A GitHub Actions workflow at `.github/workflows/ci.yml` should run when code is pushed or a pull request is opened. It should install dependencies with `npm ci`, execute backend/frontend tests, run their builds and formatting checks, run CodeQL for the supported languages, and build both Docker images. If a required check fails, the workflow should report a failure. Publishing images to Docker Hub should happen **only after** the required checks pass, using the repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`. CodeQL result upload requires an appropriately configured repository and the required `security-events` permission.
+**⚙️ How the planned DevSecOps workflow should work:** A GitHub Actions workflow at `.github/workflows/ci.yml` should run when code is pushed or a pull request is opened. It should install dependencies with `npm ci`, execute backend/frontend tests, run their builds and formatting checks, run CodeQL for the supported languages, and build both Docker images. If a required check fails, the workflow should report a failure. Publishing images to Docker Hub should happen **only after** the required checks pass, using the repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`. CodeQL result upload requires an appropriately configured repository and the required `security-events` permission.
 
-**Reviewing static-analysis findings:** A developer should inspect each CodeQL alert, note its severity and affected file, trace the potentially unsafe input or operation, and decide whether it is a real problem. A confirmed issue should be fixed in code, checked again, and recorded with the relevant test or pull request. A false positive should be documented with a reason rather than silently ignored. High-risk findings should be resolved before a release. A passing CodeQL scan would reduce risk, but it would not guarantee that the application has no vulnerabilities.
+**🛠️ Reviewing static-analysis findings:** A developer should inspect each CodeQL alert, note its severity and affected file, trace the potentially unsafe input or operation, and decide whether it is a real problem. A confirmed issue should be fixed in code, checked again, and recorded with the relevant test or pull request. A false positive should be documented with a reason rather than silently ignored. High-risk findings should be resolved before a release. A passing CodeQL scan would reduce risk, but it would not guarantee that the application has no vulnerabilities.
 
-**Current limitation:** The supplied ZIP does not contain `.github/workflows/ci.yml` or a CodeQL report. Therefore, this README does **not** claim that GitHub Actions, CodeQL, or Docker Hub publishing has succeeded. The backend formatting script also references the missing workflow file, so the complete formatting check may not pass until the workflow is added. Add the actual run URL, scan configuration, alert summary, and any fixes once the pipeline has been run; results from another project copy are not proof for this repository.
+**⚠️ Current limitation:** The supplied ZIP does not contain `.github/workflows/ci.yml` or a CodeQL report. Therefore, this README does **not** claim that GitHub Actions, CodeQL, or Docker Hub publishing has succeeded. The backend formatting script also references the missing workflow file, so the complete formatting check may not pass until the workflow is added. Add the actual run URL, scan configuration, alert summary, and any fixes once the pipeline has been run; results from another project copy are not proof for this repository.
 
-### Docker and Docker Compose
+---
+
+### 🐳 Docker and Docker Compose
 
 The root `compose.yml` defines separate `backend`, `frontend`, and local `mailhog` services. The backend and frontend are built from their own Dockerfiles, connected through the `hustlehub-bridge` bridge network, and publish ports 3000 and 8080 respectively. The backend receives its settings from `backend/.env`, uses the configured `CORS_ORIGINS`, mounts local certificates read-only, and maps `backend/logs` to the host. MailHog exposes its web inbox on localhost port 8025 and SMTP inside the compose network.
 
@@ -771,40 +776,44 @@ docker compose up --build
 
 Check service state and backend logs with `docker compose ps` and `docker compose logs -f backend`. Stop the stack with `docker compose down`. Docker requires a populated `backend/.env` and the local certificate files under `backend/certs`; do not commit either. The frontend uses the build-time `VITE_API_URL` value.
 
-### Logging and cloud log forwarding
+---
 
-**Purpose of logging:** Logging creates a record of what the application did and when it happened. In HustleHub+, these records help developers investigate failures, confirm that important marketplace operations occurred, and trace security-relevant activity without relying only on what a user sees on screen. This matters for **monitoring** because a sequence of log events can reveal a failing endpoint, recurring errors, or an interrupted booking workflow. It matters for **security** because suspicious patterns, such as repeated failed logins, invalid tokens, or unexpected administrator actions, can be investigated later.
+### 📊 Logging and cloud log forwarding
+
+**🎯 Purpose of logging:** Logging creates a record of what the application did and when it happened. In HustleHub+, these records help developers investigate failures, confirm that important marketplace operations occurred, and trace security-relevant activity without relying only on what a user sees on screen. This matters for **monitoring** because a sequence of log events can reveal a failing endpoint, recurring errors, or an interrupted booking workflow. It matters for **security** because suspicious patterns, such as repeated failed logins, invalid tokens, or unexpected administrator actions, can be investigated later.
 
 The backend uses the structured logger in `backend/utils/logger.js`. Each JSON entry contains a UTC timestamp, a severity level (`INFO`, `WARN`, or `ERROR`), an event name, and selected safe details. Examples from the application include:
 
 | Logged event | Why it is useful |
 | --- | --- |
-| `api_request` | Records HTTP method, route path, and response status to help identify errors and unusual request activity. Query strings and request bodies are not added by this request logger. |
-| `login_failed`, `token_validation_failed`, `two_factor_login_failed` | Help investigate failed authentication attempts and possible unauthorised access. |
-| `compromised_password_rejected`, `password_screening_unavailable` | Show when password safety checks reject a password or cannot reach the screening service. |
-| `two_factor_enabled`, `admin_user_status_changed`, `admin_gig_moderated` | Provide a record of important account-security and administrative actions. |
-| `booking_confirmed`, `transaction_recorded` | Help trace the booking process and confirm that a **simulated** transaction was recorded after the database transaction completed. |
-| `unhandled_error` | Helps diagnose server-side failures without sending internal error details to the client. |
+| 🌐 `api_request` | Records HTTP method, route path, and response status to help identify errors and unusual request activity. Query strings and request bodies are not added by this request logger. |
+| 🔑 `login_failed`, `token_validation_failed`, `two_factor_login_failed` | Help investigate failed authentication attempts and possible unauthorised access. |
+| 🛡️ `compromised_password_rejected`, `password_screening_unavailable` | Show when password safety checks reject a password or cannot reach the screening service. |
+| 🔐 `two_factor_enabled`, `admin_user_status_changed`, `admin_gig_moderated` | Provide a record of important account-security and administrative actions. |
+| 💳 `booking_confirmed`, `transaction_recorded` | Help trace the booking process and confirm that a **simulated** transaction was recorded after the database transaction completed. |
+| 🚨 `unhandled_error` | Helps diagnose server-side failures without sending internal error details to the client. |
 
-**Local storage and monitoring:** Events are written as JSON lines to `backend/logs/app.log`, a directory excluded from Git. When the log reaches approximately 5 MB, the logger rotates it to `app.log.1`, keeping a limited amount of local history. It also maintains a bounded recent-event list and supplies recent entries for the restricted administrator activity view. Docker Compose mounts the log directory so local files remain available on the host. To follow backend output while using containers, run `docker compose logs -f backend` from the repository root.
+**🗂️ Local storage and monitoring:** Events are written as JSON lines to `backend/logs/app.log`, a directory excluded from Git. When the log reaches approximately 5 MB, the logger rotates it to `app.log.1`, keeping a limited amount of local history. It also maintains a bounded recent-event list and supplies recent entries for the restricted administrator activity view. Docker Compose mounts the log directory so local files remain available on the host. To follow backend output while using containers, run `docker compose logs -f backend` from the repository root.
 
-**Protecting sensitive information:** The logger sanitises sensitive field names and values before writing or forwarding events. Passwords, tokens, bearer credentials, email addresses, MongoDB connection strings, reset links, and 2FA-related fields are redacted where recognised. The request logger does not capture request bodies or query strings. This reduces the risk of leaking personal information or secrets, although log access still needs to be restricted and sanitisation should be tested when new event fields are introduced. The redaction tests are in `backend/test/logger.test.js`.
+**🔐 Protecting sensitive information:** The logger sanitises sensitive field names and values before writing or forwarding events. Passwords, tokens, bearer credentials, email addresses, MongoDB connection strings, reset links, and 2FA-related fields are redacted where recognised. The request logger does not capture request bodies or query strings. This reduces the risk of leaking personal information or secrets, although log access still needs to be restricted and sanitisation should be tested when new event fields are introduced. The redaction tests are in `backend/test/logger.test.js`.
 
-**Optional cloud forwarding:** The backend can also send sanitised JSON events via HTTPS to a configured log-ingestion service using `LOG_INGEST_URL` and `LOG_INGEST_TOKEN` in `backend/.env`. The endpoint must be HTTPS; requests have a three-second timeout. If these variables are not set, events remain local. If cloud delivery fails, the logger reports the failure and continues local logging, so a provider outage does not stop the application. The ingest token must never be committed or exposed to the frontend. Provider retention and usage limits depend on the chosen service; for example, see [Better Stack's HTTP log-ingestion documentation](https://betterstack.com/docs/logs/ingesting-data/http/logs/).
+**☁️ Optional cloud forwarding:** The backend can also send sanitised JSON events via HTTPS to a configured log-ingestion service using `LOG_INGEST_URL` and `LOG_INGEST_TOKEN` in `backend/.env`. The endpoint must be HTTPS; requests have a three-second timeout. If these variables are not set, events remain local. If cloud delivery fails, the logger reports the failure and continues local logging, so a provider outage does not stop the application. The ingest token must never be committed or exposed to the frontend. Provider retention and usage limits depend on the chosen service; for example, see [Better Stack's HTTP log-ingestion documentation](https://betterstack.com/docs/logs/ingesting-data/http/logs/).
 
-**Monitoring limitation:** Logs provide evidence for troubleshooting and investigation, but this repository does not demonstrate a configured cloud dashboard, automatic threat alerting, or a long-term retention policy. For a deployed system, the administrator should review authentication failures, HTTP `401`/`403`/`429` responses, `ERROR` events, and cloud-forwarding failures, and configure alerts and retention with the chosen provider.
+**⚠️ Monitoring limitation:** Logs provide evidence for troubleshooting and investigation, but this repository does not demonstrate a configured cloud dashboard, automatic threat alerting, or a long-term retention policy. For a deployed system, the administrator should review authentication failures, HTTP `401`/`403`/`429` responses, `ERROR` events, and cloud-forwarding failures, and configure alerts and retention with the chosen provider.
 
-**Evidence to capture:** A screenshot of a redacted event in `backend/logs/app.log` and, if cloud forwarding is configured, the matching event in the provider's live tail. Do not include ingestion tokens or real credentials in screenshots.
+**📸 Evidence to capture:** A screenshot of a redacted event in `backend/logs/app.log` and, if cloud forwarding is configured, the matching event in the provider's live tail. Do not include ingestion tokens or real credentials in screenshots.
 
-### Part 3 additional security features
+---
+
+### 🔐 Part 3 additional security features
 
 Part 3 adds two security controls on top of the existing password hashing, JWT authentication, role checks, and optional user 2FA. Both controls are implemented in the backend rather than relying on frontend restrictions alone.
 
-#### 1. Compromised-password screening
+#### 1. 🛡️ Compromised-password screening
 
-**Purpose:** A password can meet normal length and complexity rules but still be unsafe if it has already appeared in a known data breach. Screening helps prevent users from creating or resetting an account with a password that attackers may already know. It supplements password hashing; it does not replace hashing or password validation.
+**🎯 Purpose:** A password can meet normal length and complexity rules but still be unsafe if it has already appeared in a known data breach. Screening helps prevent users from creating or resetting an account with a password that attackers may already know. It supplements password hashing; it does not replace hashing or password validation.
 
-**How it works in HustleHub+:**
+**⚙️ How it works in HustleHub+:**
 
 1. During registration (`POST /api/auth/register`) and password reset (`POST /api/auth/reset-password`), `backend/controllers/authController.js` calls the utility in `backend/utils/compromisedPassword.js` before accepting the new password.
 2. The password is hashed locally with SHA-1 **for the breach lookup only**. The utility sends just the first **five hexadecimal characters** of that hash to the Have I Been Pwned (HIBP) Pwned Passwords range API. It never sends the plain-text password or full hash. The request also asks for padded results to limit information exposure from response size.
@@ -812,41 +821,45 @@ Part 3 adds two security controls on top of the existing password hashing, JWT a
 4. If a match is found, the API returns **HTTP 400** with `PASSWORD_COMPROMISED` and asks the user to choose another password. If no match is found, normal registration or reset processing continues.
 5. A three-second timeout limits how long the app waits for HIBP. A network failure, timeout, or unsuccessful provider response returns **HTTP 503** with `PASSWORD_SCREENING_UNAVAILABLE`. The password change is not accepted until screening is available. This is a **fail-closed** approach: it avoids silently bypassing the check, but it means a provider outage can temporarily block new registrations and password resets.
 
-**Testing:** `backend/test/compromisedPassword.test.js` covers a breached password, a clean password, and unavailable-service cases (network/abort and unsuccessful responses). It also checks that only the five-character hash prefix is placed in the request URL. The corresponding outcomes are logged as `compromised_password_rejected` or `password_screening_unavailable` without recording the password. See the [HIBP Pwned Passwords API](https://haveibeenpwned.com/API/v3#PwnedPasswords).
+**🧪 Testing:** `backend/test/compromisedPassword.test.js` covers a breached password, a clean password, and unavailable-service cases (network/abort and unsuccessful responses). It also checks that only the five-character hash prefix is placed in the request URL. The corresponding outcomes are logged as `compromised_password_rejected` or `password_screening_unavailable` without recording the password. See the [HIBP Pwned Passwords API](https://haveibeenpwned.com/API/v3#PwnedPasswords).
 
-#### 2. Admin-only multi-factor authentication (MFA) enforcement
+#### 2. 🔑 Admin-only multi-factor authentication (MFA) enforcement
 
-**Purpose:** Administrator accounts can manage users, moderate gigs, and inspect administrative data. A stolen admin password could therefore expose more of the platform than a normal account. Requiring a time-based one-time password (**TOTP**) adds another authentication factor and reduces the risk of password-only compromise.
+**🎯 Purpose:** Administrator accounts can manage users, moderate gigs, and inspect administrative data. A stolen admin password could therefore expose more of the platform than a normal account. Requiring a time-based one-time password (**TOTP**) adds another authentication factor and reduces the risk of password-only compromise.
 
-**How it works in HustleHub+:**
+**⚙️ How it works in HustleHub+:**
 
 1. The middleware `backend/middleware/requireAdminMfa.js` is applied to the admin routes in `backend/routes/adminRoutes.js` **after** JWT authentication and the admin-role check. An admin account with `twoFactorEnabled: false` receives **HTTP 403** and the code `ADMIN_MFA_REQUIRED` instead of access to `/api/admin/*` endpoints.
 2. The React app recognises that an administrator has not enrolled in 2FA and directs them to the `/security` page. This page explains the requirement and allows setup through `/api/auth/2fa/setup` and confirmation through `/api/auth/2fa/enable`, using a QR code and an authenticator-generated TOTP code.
 3. An existing admin can still sign in with their password and access the authenticated security-setup flow before MFA is enabled. Only protected administrative operations are blocked, avoiding a setup dead end. After enrollment, future logins require the normal password **and** a valid TOTP code to complete the 2FA challenge.
 4. The backend also prevents admins from disabling 2FA through `/api/auth/2fa/disable`, returning `ADMIN_MFA_REQUIRED`. The requirement applies specifically to administrators; non-admin users retain the optional 2FA behaviour.
 
-**Testing:** `backend/test/requireAdminMfa.test.js` checks that an unenrolled administrator is blocked, an enrolled administrator is allowed through, and non-admin accounts are unaffected by this middleware. Frontend tests in `frontend/src/components/ProtectedRoute.test.tsx` and `frontend/src/pages/SecurityPage.test.tsx` cover the admin setup navigation and guidance. The server-side middleware is the actual access-control boundary; a frontend redirect alone would not secure the API.
+**🧪 Testing:** `backend/test/requireAdminMfa.test.js` checks that an unenrolled administrator is blocked, an enrolled administrator is allowed through, and non-admin accounts are unaffected by this middleware. Frontend tests in `frontend/src/components/ProtectedRoute.test.tsx` and `frontend/src/pages/SecurityPage.test.tsx` cover the admin setup navigation and guidance. The server-side middleware is the actual access-control boundary; a frontend redirect alone would not secure the API.
 
-### Part 3 final security review
+---
+
+### 🛡️ Part 3 final security review
 
 The final security review considers common risks to a freelance marketplace and maps each risk to controls that are present in the code. It also records what still needs to be checked before deployment. This is a **code-based security review**, not a claim that a penetration test, live attack simulation, or complete CodeQL scan has been performed.
 
 | Risk or threat | Controls reviewed in the implementation | Residual risk and recommended follow-up |
 | --- | --- | --- |
-| **Injection and unsafe input** | Backend request validators, permitted-field checks, request-size limits, and Mongoose models/query operations constrain input before business logic uses it. | Review every new endpoint for unexpected object fields and unsafe query construction. Complete CodeQL scanning and test malicious inputs. |
-| **Cross-site scripting (XSS)** | React normally renders user content as text; backend text validation, Helmet, and Content Security Policy add defence in depth. | Do not introduce unreviewed raw HTML rendering for gigs, messages, or reviews; check any future rich-text editor separately. |
-| **Weak or breached passwords** | Password validation, bcrypt storage, rate limiting, and Part 3 HIBP range-based screening on registration/reset. | HIBP availability is an external dependency. Verify that the `400` breached-password and `503` unavailable-service paths remain consistent in API-level tests. |
-| **Administrator account takeover** | JWT verification, role-based controls, admin-only TOTP middleware, and protection against disabling an admin's MFA. | Test the whole login/setup/admin-route flow, including expired tokens and attempts to access admin APIs without enrollment. Protect TOTP recovery and encryption keys. |
-| **Broken object-level access control** | Backend ownership and role checks restrict gig, booking, account, and administrative actions. | Re-test cross-account requests after changing endpoints; frontend visibility controls must never be the only authorisation check. |
-| **Secret and personal-data exposure** | Backend configuration keeps secrets out of the frontend; logs redact identified credentials, email addresses, database URIs, and reset/2FA fields. | Review new logging fields, restrict file/provider access, and rotate exposed secrets. Redaction reduces risk but cannot replace access controls. |
-| **Brute-force and abuse** | Authentication, 2FA, and API rate limits; failed authentication and token checks produce log events. | Inspect repeated failures and `429` responses. Logs do not themselves implement blocking, alerting, or an incident-response process. |
-| **Deployment and transport** | Local HTTPS, security headers, CORS configuration, and separate backend/frontend containers in Docker Compose. | Local self-signed certificates are not production certificates. Harden production configuration, image dependencies, and secret management. |
-| **Monitoring or third-party outage** | Local JSON logging and bounded rotation continue when optional cloud delivery fails; HIBP errors cause an explicit `503` response. | Add a monitored cloud sink, alert thresholds, and documented log retention if deploying. A prolonged HIBP outage will affect registration and reset availability. |
-| **Unverified build or dependency risk** | Test scripts, syntax/type/build checks, and Dockerfiles are present. | The supplied repository has no GitHub Actions workflow or CodeQL result. Complete and record the CI/SAST checks and dependency review before claiming release readiness. |
+| **💉 Injection and unsafe input** | Backend request validators, permitted-field checks, request-size limits, and Mongoose models/query operations constrain input before business logic uses it. | Review every new endpoint for unexpected object fields and unsafe query construction. Complete CodeQL scanning and test malicious inputs. |
+| **🌐 Cross-site scripting (XSS)** | React normally renders user content as text; backend text validation, Helmet, and Content Security Policy add defence in depth. | Do not introduce unreviewed raw HTML rendering for gigs, messages, or reviews; check any future rich-text editor separately. |
+| **🔓 Weak or breached passwords** | Password validation, bcrypt storage, rate limiting, and Part 3 HIBP range-based screening on registration/reset. | HIBP availability is an external dependency. Verify that the `400` breached-password and `503` unavailable-service paths remain consistent in API-level tests. |
+| **🔑 Administrator account takeover** | JWT verification, role-based controls, admin-only TOTP middleware, and protection against disabling an admin's MFA. | Test the whole login/setup/admin-route flow, including expired tokens and attempts to access admin APIs without enrollment. Protect TOTP recovery and encryption keys. |
+| **🚫 Broken object-level access control** | Backend ownership and role checks restrict gig, booking, account, and administrative actions. | Re-test cross-account requests after changing endpoints; frontend visibility controls must never be the only authorisation check. |
+| **🔒 Secret and personal-data exposure** | Backend configuration keeps secrets out of the frontend; logs redact identified credentials, email addresses, database URIs, and reset/2FA fields. | Review new logging fields, restrict file/provider access, and rotate exposed secrets. Redaction reduces risk but cannot replace access controls. |
+| **🚨 Brute-force and abuse** | Authentication, 2FA, and API rate limits; failed authentication and token checks produce log events. | Inspect repeated failures and `429` responses. Logs do not themselves implement blocking, alerting, or an incident-response process. |
+| **🐳 Deployment and transport** | Local HTTPS, security headers, CORS configuration, and separate backend/frontend containers in Docker Compose. | Local self-signed certificates are not production certificates. Harden production configuration, image dependencies, and secret management. |
+| **📡 Monitoring or third-party outage** | Local JSON logging and bounded rotation continue when optional cloud delivery fails; HIBP errors cause an explicit `503` response. | Add a monitored cloud sink, alert thresholds, and documented log retention if deploying. A prolonged HIBP outage will affect registration and reset availability. |
+| **⚠️ Unverified build or dependency risk** | Test scripts, syntax/type/build checks, and Dockerfiles are present. | The supplied repository has no GitHub Actions workflow or CodeQL result. Complete and record the CI/SAST checks and dependency review before claiming release readiness. |
 
-**Review outcome:** The two new Part 3 controls are traceable to their middleware/utilities and associated tests. The main outstanding security-assurance gap is missing CI/CodeQL evidence, together with deployment-specific monitoring and operational checks. No statement in this review should be interpreted as a guarantee that the system is vulnerability-free.
+**📋 Review outcome:** The two new Part 3 controls are traceable to their middleware/utilities and associated tests. The main outstanding security-assurance gap is missing CI/CodeQL evidence, together with deployment-specific monitoring and operational checks. No statement in this review should be interpreted as a guarantee that the system is vulnerability-free.
 
-### Part 3 testing and evidence
+---
+
+### 🧪 Part 3 testing and evidence
 
 To reproduce the existing checks, open a terminal in `backend` and run:
 
@@ -868,22 +881,24 @@ npm run format:check
 
 The frontend build performs TypeScript checking before the Vite production build. The backend build performs JavaScript syntax checks; these are not substitutes for CodeQL security analysis. From the repository root, build the images with `docker compose build`. Newman API tests are described in Part 2 and should be executed against a test database because they create records.
 
-**Focused verification performed on the supplied code:** `node --test test/compromisedPassword.test.js test/requireAdminMfa.test.js test/logger.test.js` completed with **8 tests passed and 0 failed**. These tests cover the password-screening helper, the admin MFA middleware, and log sanitisation. This result does **not** mean that the complete backend/frontend suites, Docker build, HIBP live service, or CodeQL scan passed.
+**✅ Focused verification performed on the supplied code:** `node --test test/compromisedPassword.test.js test/requireAdminMfa.test.js test/logger.test.js` completed with **8 tests passed and 0 failed**. These tests cover the password-screening helper, the admin MFA middleware, and log sanitisation. This result does **not** mean that the complete backend/frontend suites, Docker build, HIBP live service, or CodeQL scan passed.
 
 | Evidence | Status / what should be recorded |
 | --- | --- |
-| Compromised-password tests | **Verified locally:** breached, clean, and unavailable screening behaviour (three tests). Add terminal output or a CI run link. |
-| Admin MFA middleware tests | **Verified locally:** unenrolled admin blocked, enrolled admin allowed, non-admin unaffected (three tests). Add a screenshot of the guided enrollment flow. |
-| Logging sanitisation tests | **Verified locally:** field/value redaction (two tests). Add a sanitised sample from the local log. |
-| GitHub Actions and CodeQL | **Pending:** add `.github/workflows/ci.yml`, enable scanning as supported by the repository, and record the workflow URL, query setup, alerts, and fixes. |
-| Full backend/frontend tests and builds | **Not verified in this README update:** add current test counts, build results, and output from the actual revision. |
-| Docker Compose | **Not verified in this README update:** record backend/frontend service startup and health-check evidence. |
-| Cloud logging | **Not verified in this README update:** add a redacted event visible in the chosen provider's live tail. |
-| Part 3 demonstration video | **Pending:** link a walkthrough showing authentication, gig creation, booking/completion, simulated transaction, income/tax display, and Part 3 security/deployment checks. |
+| 🛡️ Compromised-password tests | **✅ Verified locally:** breached, clean, and unavailable screening behaviour (three tests). Add terminal output or a CI run link. |
+| 🔑 Admin MFA middleware tests | **✅ Verified locally:** unenrolled admin blocked, enrolled admin allowed, non-admin unaffected (three tests). Add a screenshot of the guided enrollment flow. |
+| 📝 Logging sanitisation tests | **✅ Verified locally:** field/value redaction (two tests). Add a sanitised sample from the local log. |
+| 🔍 GitHub Actions and CodeQL | **⏳ Pending:** add `.github/workflows/ci.yml`, enable scanning as supported by the repository, and record the workflow URL, query setup, alerts, and fixes. |
+| 🧪 Full backend/frontend tests and builds | **⚠️ Not verified in this README update:** add current test counts, build results, and output from the actual revision. |
+| 🐳 Docker Compose | **⚠️ Not verified in this README update:** record backend/frontend service startup and health-check evidence. |
+| ☁️ Cloud logging | **⚠️ Not verified in this README update:** add a redacted event visible in the chosen provider's live tail. |
+| 🎬 Part 3 demonstration video | **⏳ Pending:** link a walkthrough showing authentication, gig creation, booking/completion, simulated transaction, income/tax display, and Part 3 security/deployment checks. |
 
 Keep the linked evidence and results specific to the submitted repository and commit. Do not label a check as successful until the corresponding output confirms it.
 
-### Conclusion
+---
+
+### 📌 Conclusion
 
 Part 3 extends the marketplace with an indicative SARS-based freelancer tax estimate, additional password and administrator authentication controls, structured local and optional cloud logging, and separate Docker services orchestrated by Compose. The project remains an educational system: payments are simulated, the tax output is approximate, and deployment readiness should be judged from the actual passing pipeline, static-analysis report, container run, and demonstration evidence—not from feature descriptions alone. The CI workflow and Part 3 evidence listed above remain to be completed in this repository.
 
