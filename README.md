@@ -1,45 +1,40 @@
-# 📡 Smart-X IoT Gateway
+# 📡 Smart-X IoT Gateway — Part 3: Trees and Graphs
 
-**A .NET 10 IoT monitoring platform with live telemetry, predictive actions, historical AVL indexing and an energy-weighted mesh network.**
+**Network Topology, Breadth-First Search (BFS), Prim's Minimum Spanning Tree (MST), and AVL-based historical telemetry queries.**
 
-Smart-X combines an **ASP.NET Core Web API**, **ASP.NET Core MVC dashboard** and **SQL Server / Entity Framework Core**. The application runs with simulated IoT readings.
+Smart-X is a .NET 10 IoT monitoring application built with **ASP.NET Core Web API**, **ASP.NET Core MVC**, and **SQL Server / Entity Framework Core**. This README is the **Part 3 implementation report**: it explains the new graph and tree structures in depth and provides the steps needed to **compile, run, and use the complete application suite**. Earlier project features are used as data sources but are not assessed or explained here.
 
-> **Part 3 focus:** **Breadth-First Search (BFS)**; **Prim's Minimum Spanning Tree (MST)**; simulated wireless-link failure and recovery; and an **AVL Tree** for timestamp-range searches. The project uses **Prim's algorithm** to build a Minimum Spanning Tree (MST), connecting sensors while minimising the total estimated energy cost of the network connections.
+> **Scope:** The radio network and transmission-energy costs are **simulated**. The project does not measure real wireless signal strength, radio power usage, or battery drain.
 
 ## 📑 Contents
 
-- [Project overview](#project-overview)
-- [Architecture and data flow](#architecture-and-data-flow)
-- [Project structure](#project-structure)
-- [Getting started](#getting-started)
-- [Using the application](#using-the-application)
-- [Data structures and design choices](#data-structures-and-design-choices)
-- [Part 3 - Graphs and mesh routing](#part-3--graphs-and-mesh-routing)
-- [Part 3 - AVL historical telemetry](#part-3--avl-historical-telemetry)
-- [Performance and scalability](#performance-and-scalability)
-- [API reference](#api-reference)
-- [Part 3 demonstration guide](#part-3-demonstration-guide)
-- [Predictive action engine](#predictive-action-engine)
-- [Existing functionality and regression checks](#existing-functionality-and-regression-checks)
-- [Docker](#docker)
-- [Design decisions and limitations](#design-decisions-and-limitations)
-- [Video and author](#video-and-author)
+- [Part 3 overview](#-part-3-overview)
+- [Architecture and data flow](#️-architecture-and-data-flow)
+- [Project structure](#-project-structure)
+- [Compile and run the application](#-compile-and-run-the-application)
+- [Using the Part 3 features](#️-using-the-part-3-features)
+- [Part 3 data structures](#-part-3-data-structures)
+- [Graphs, BFS, and Prim's MST](#-graphs-bfs-and-prims-mst)
+- [AVL Tree and historical telemetry](#-avl-tree-and-historical-telemetry)
+- [Performance and scalability](#-performance-and-scalability)
+- [API reference](#-api-reference)
+- [Part 3 demonstration guide](#-part-3-demonstration-guide)
+- [Design decisions and limitations](#️-design-decisions-and-limitations)
 
 ---
 
-## 🎯 Project Overview
+## 🎯 Part 3 Overview
 
-The goal of Smart-X is to monitor a collection of IoT sensors and actuators from one dashboard. The system accepts numeric and Boolean telemetry, stores historical readings, identifies anomalies and supports simulated actuator commands. A background service generates telemetry every **5 seconds**.
+Part 3 adds two capabilities to Smart-X:
 
-**🚀 What the three parts contribute:**
-
-| Area | Main functionality | Why it matters |
+| Feature | Main classes | Contribution |
 |---|---|---|
-| **📡 Part 1 — Telemetry foundation** | Sensor registration, typed readings, storage, live dashboard, files | Creates the device and telemetry data used by the rest of the application |
-| **⚙️ Part 2 — Data structures and actions** | FIFO/priority queues, dictionaries, hash sets, command stack/Undo, suggested actions | Handles incoming data, identifies critical readings and provides fast operational access |
-| **🌐 Part 3 — Trees and graphs** | AVL history index, BFS, weighted mesh, Prim's MST, link-failure simulation | Adds efficient historical searches and demonstrates how sensors can communicate through energy-weighted routes |
+| **🌐 Weighted mesh network** | `MeshTopologyService`, `MeshLinkStateStore` | Models sensors and gateway links, finds reachable sensors with BFS, and selects a minimum-weight set of connections using Prim's algorithm |
+| **🌲 Historical telemetry index** | `TelemetryAvlIndex`, `HistoricalNetworkController` | Balances timestamped readings in an AVL Tree, enabling efficient date-range searches and showing search diagnostics |
 
-For Part 3, a sensor can send readings to the gateway **through other sensors**, instead of needing a direct gateway connection. When a simulated wireless link fails, the graph is rebuilt using the links still available.
+In the simulated network, **not every sensor connects directly to the central gateway**. Sensors may use neighbouring sensors as intermediate hops. When a connection fails, Smart-X rebuilds the active graph and recalculates the available BFS and MST routes.
+
+An AVL Tree addresses a different problem: retrieving readings between two dates without scanning every entry in the in-memory history index.
 
 ---
 
@@ -47,124 +42,115 @@ For Part 3, a sensor can send readings to the gateway **through other sensors**,
 
 ```mermaid
 flowchart TD
-    A[Simulated sensors / manual telemetry] --> B[ASP.NET Core Web API]
-    B --> C[Telemetry validation and dispatch]
-    C --> D[(SQL Server telemetry history)]
-    C --> E[LiveStreamStore]
-    E --> F[MeshTopologyService]
-    E --> G[Predictive insights and Command Stream]
-    D --> H[TelemetryAvlIndex]
-    F --> I[BFS traversal]
-    F --> J[Prim's MST]
-    F --> K[Optional Dijkstra comparison]
-    H --> L[Timestamp range results]
-    I --> M[Network Topology API]
-    J --> M
-    K --> M
-    L --> N[Historical Network API]
-    M --> O[ASP.NET Core MVC dashboard]
-    N --> O
-    G --> O
-    P[MeshLinkStateStore: disabled links] --> F
-    O -->|Disable / restore demo link| Q[NetworkTopologyController]
-    Q --> F
+    A[Registered sensors and current connection states] --> B[LiveStreamStore]
+    B --> C[MeshTopologyService]
+    D[MeshLinkStateStore: disabled links] --> C
+    C --> E[Weighted adjacency list]
+    E --> F[BFS: reachability and fewest hops]
+    E --> G[Prim's MST: minimum total edge weight]
+    F --> H[Network Topology API]
+    G --> H
+    I[(SQL Server: persisted telemetry)] --> J[TelemetryAvlIndex]
+    J --> K[Balanced timestamp range search]
+    K --> L[Historical Network API]
+    H --> M[ASP.NET Core MVC: Network Topology page]
+    L --> M
+    M -->|Disable / restore link| N[NetworkTopologyController]
+    N --> D
 ```
 
-### 🔄 How Data Flows Through Smart-X
+**🔄 Two distinct data flows:**
 
-The system uses **two main data flows**, each handling a different task:
+1. **Network routing:** `LiveStreamStore` supplies device identifiers and online status → `MeshTopologyService` creates weighted wireless links and an adjacency list → BFS calculates reachability and fewest-hop paths → Prim's algorithm calculates the MST → MVC displays the graph and routes.
+2. **Historical search:** Existing telemetry readings are persisted in SQL Server → `TelemetryAvlIndex` loads and indexes them by `(Timestamp, Id)` → balanced range traversal skips irrelevant branches → MVC displays the matching readings and tree diagnostics.
 
-1. **🌐 Live Network Routing:** `LiveStreamStore` provides sensor identifiers and connection status → `MeshTopologyService` creates the network links and adjacency list → **BFS** checks network connectivity while **Prim's algorithm** calculates the Minimum Spanning Tree (MST) → the MVC Network Topology page displays the results as an interactive graph.
-
-2. **🌳 Historical Telemetry Searching:** SQL Server stores telemetry readings → `TelemetryAvlIndex` organises the readings by timestamp using an AVL Tree → date-range searches focus on relevant branches instead of checking every reading → the MVC page displays the results along with tree performance details.
-
-### 🏗️ Separation of Responsibilities
-
-The **⚙️ Web API** handles the algorithms, data processing and calculations, while the **🖥️ MVC application** displays the results and sends user requests to the API.
-
-This keeps the project organised, makes the code easier to maintain and avoids putting all the functionality into one controller or JavaScript file.
-
----
-
-### Part 3 classes
-
-| Class / file | Responsibility |
-|---|---|
-| [`MeshTopologyService.cs`](SmartX_Api/Services/MeshTopologyService.cs) | Builds the weighted mesh, adjacency list, BFS traversal, Prim's MST, optional Dijkstra routes and route costs |
-| [`MeshLinkStateStore.cs`](SmartX_Api/Services/MeshLinkStateStore.cs) | Remembers which simulated wireless links have been disabled or restored |
-| [`MeshModels.cs`](SmartX_Api/Models/MeshModels.cs) | Defines `MeshNode`, `MeshEdge`, `MeshRoute` and `MeshSnapshot` response models |
-| [`TelemetryAvlIndex.cs`](SmartX_Api/Services/TelemetryAvlIndex.cs) | Builds a self-balancing timestamp index per sensor and handles historical range searches |
-| [`NetworkTopologyController.cs`](SmartX_Api/Controllers/NetworkTopologyController.cs) | Returns the graph and accepts simulated link updates |
-| [`HistoricalNetworkController.cs`](SmartX_Api/Controllers/HistoricalNetworkController.cs) | Validates date ranges and returns AVL history results |
-| [`NetworkTopology.cshtml`](SmartXMvc/Views/Home/NetworkTopology.cshtml) | Network topology, routing controls, failure simulation, BFS and historical search UI |
-| [`network-topology.js`](SmartXMvc/wwwroot/js/network-topology.js) | Draws interactive SVG nodes/edges and displays API results |
+**Separation of responsibilities:** The **API** owns the algorithms and their calculations. The **MVC** application displays the results and forwards the user's requests. The graph is rendered with JavaScript, but BFS, Prim's and AVL searching are implemented in **C# services**, not recreated in the browser.
 
 ---
 
 ## 📁 Project Structure
 
+The Part 3 files of interest are:
+
 ```text
 prog7312-2026-poe-ghanief/
 ├── SmartX_Api/
 │   ├── Controllers/
-│   │   ├── NetworkTopologyController.cs
-│   │   ├── HistoricalNetworkController.cs
-│   │   ├── CommandStreamController.cs
-│   │   ├── SensorsController.cs
-│   │   └── TelemetryController.cs
-│   ├── Data/SmartXDbContext.cs
-│   ├── Models/MeshModels.cs
+│   │   ├── NetworkTopologyController.cs      # Graph and link-state endpoints
+│   │   └── HistoricalNetworkController.cs    # AVL history endpoint
+│   ├── Models/
+│   │   └── MeshModels.cs                     # Graph nodes, links, routes, snapshot
 │   ├── Services/
-│   │   ├── MeshTopologyService.cs        # Graph, BFS, Prim's and route calculations
-│   │   ├── MeshLinkStateStore.cs         # Failed/recovered simulated links
-│   │   ├── TelemetryAvlIndex.cs          # Balanced tree and timestamp searches
-│   │   ├── TelemetryDispatchService.cs   # FIFO and critical priority queues
-│   │   ├── CommandOperationsService.cs   # Actuator commands and Undo
-│   │   ├── LiveStreamStore.cs            # Device lookup and live trends
-│   │   └── PredictiveInsightsService.cs  # Suggested Actions
-│   └── Program.cs
+│   │   ├── MeshTopologyService.cs            # Adjacency list, BFS, Prim's MST
+│   │   ├── MeshLinkStateStore.cs             # In-memory disabled link set
+│   │   └── TelemetryAvlIndex.cs              # Balanced timestamp index
+│   └── Program.cs                            # Dependency injection
 ├── SmartXMvc/
-│   ├── Controllers/HomeController.cs
-│   ├── Services/SmartXApiClient.cs
-│   ├── Views/Home/NetworkTopology.cshtml
-│   ├── wwwroot/js/network-topology.js
-│   └── wwwroot/css/network-topology.css
+│   ├── Controllers/HomeController.cs         # MVC proxy actions
+│   ├── Services/SmartXApiClient.cs           # API client
+│   ├── Views/Home/NetworkTopology.cshtml     # Part 3 interface
+│   └── wwwroot/
+│       ├── js/network-topology.js            # SVG graph, history, interactions
+│       └── css/network-topology.css          # Dashboard styling
 ├── SmartXMvc.slnx
 └── docker-compose.yml
-
 ```
+
+| File | Specific contribution to Part 3 |
+|---|---|
+| [`MeshTopologyService.cs`](SmartX_Api/Services/MeshTopologyService.cs) | Generates candidate connections, filters active edges, builds adjacency lists, runs BFS and Prim's, and constructs routes |
+| [`MeshLinkStateStore.cs`](SmartX_Api/Services/MeshLinkStateStore.cs) | Uses a `HashSet<string>` to remember manually disabled links |
+| [`MeshModels.cs`](SmartX_Api/Models/MeshModels.cs) | Defines the network nodes, weighted edges and API responses |
+| [`TelemetryAvlIndex.cs`](SmartX_Api/Services/TelemetryAvlIndex.cs) | Builds per-device AVL trees, balances nodes and answers timestamp-range queries |
+| [`NetworkTopologyController.cs`](SmartX_Api/Controllers/NetworkTopologyController.cs) | Returns graph snapshots and applies simulated link changes |
+| [`HistoricalNetworkController.cs`](SmartX_Api/Controllers/HistoricalNetworkController.cs) | Validates the sensor/date range and returns AVL query results |
+| [`NetworkTopology.cshtml`](SmartXMvc/Views/Home/NetworkTopology.cshtml) | Provides graph, routing and historical telemetry controls |
+| [`network-topology.js`](SmartXMvc/wwwroot/js/network-topology.js) | Draws graph edges/nodes and displays route/history results |
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Compile and Run the Application
 
-### Prerequisites
+These instructions launch the **complete API + MVC + database suite** required to demonstrate Part 3. Run commands from the repository root unless stated otherwise.
 
-- **.NET 10 SDK** (`dotnet --version`)
-- **SQL Server LocalDB** for local development, or an accessible SQL Server instance
-- **Visual Studio with .NET 10 support** 
-- **Git** to clone the repository
-- **EF Core CLI tool** if applying migrations manually: `dotnet tool install --global dotnet-ef`
+### ✅ Prerequisites
 
-### 1. Clone the repository
+- **.NET 10 SDK** and Visual Studio with .NET 10 support (or a terminal and editor).
+- **SQL Server LocalDB** for local development, or another accessible SQL Server instance.
+- **Git** to clone the repository.
+- **EF Core CLI**, if you prefer applying migrations manually.
+
+Verify the SDK:
+
+```powershell
+dotnet --version
+```
+
+Install the EF Core CLI if necessary:
+
+```powershell
+dotnet tool install --global dotnet-ef
+```
+
+### 1. Clone the project
 
 ```powershell
 git clone https://github.com/EMECPE/prog7312-2026-poe-ghanief.git
 cd prog7312-2026-poe-ghanief
 ```
 
-Run the following commands from the **repository root** (the folder containing `SmartXMvc.slnx`).
-
-### 2. Restore and build
+### 2. Restore and compile both projects
 
 ```powershell
 dotnet restore SmartXMvc.slnx
 dotnet build SmartXMvc.slnx
 ```
 
+A successful build confirms that the two projects and their dependencies compile. It does **not** by itself prove that every algorithm produces the correct results; use the [demonstration guide](#-part-3-demonstration-guide) to verify behaviour.
+
 ### 3. Configure SQL Server
 
-In `SmartX_Api/appsettings.json`, set `ConnectionStrings:DefaultConnection`. For example, the local configuration in the project uses:
+Check `ConnectionStrings:DefaultConnection` in `SmartX_Api/appsettings.json`. For example:
 
 ```json
 {
@@ -174,17 +160,17 @@ In `SmartX_Api/appsettings.json`, set `ConnectionStrings:DefaultConnection`. For
 }
 ```
 
-The API attempts to apply existing EF Core migrations and seed demo data at startup. To apply migrations yourself, run:
+The API applies its existing EF Core migrations and seed data during startup. To apply the existing migrations manually:
 
 ```powershell
 dotnet ef database update --project SmartX_Api --startup-project SmartX_Api
 ```
 
-**Part 3 requires no new database tables or migrations.** Its simulated link failures are held in memory, while historical readings continue to come from the existing telemetry database.
+**No new database migration is required for the mesh graph or AVL index.** Link failures are stored in memory; historical records remain in SQL Server.
 
 ### 4. Configure the MVC API address
 
-In `SmartXMvc/appsettings.json`:
+Check `SmartXMvc/appsettings.json`:
 
 ```json
 {
@@ -194,146 +180,155 @@ In `SmartXMvc/appsettings.json`:
 }
 ```
 
-### 5. Start the API and MVC application
+### 5. Start the API
 
-**Terminal 1 — API:**
+In **Terminal 1**, run:
 
 ```powershell
 dotnet run --project SmartX_Api --launch-profile http
 ```
 
-Expected local address: **http://localhost:5095**.
+Expected local API address: **http://localhost:5095**. Keep this terminal running.
 
-**Terminal 2 — MVC dashboard:**
+### 6. Start the MVC dashboard
+
+In **Terminal 2**, run:
 
 ```powershell
 dotnet run --project SmartXMvc --launch-profile http
 ```
 
-Open **http://localhost:5109**. Visit **Network Topology** to view the Part 3 features.
+Open **http://localhost:5109** in a browser, then select **Network Topology**.
 
-**Troubleshooting:** If the graph shows a connection error, confirm the API is running on port `5095` and the MVC `SmartXApi:BaseUrl` matches it. If history queries fail, confirm SQL Server is running and the API can access its database. Check the API console for migration or seeding errors.
+### 🔐 File-encryption key (complete suite configuration)
 
+If your running configuration requires encrypted file operations, supply a Base64-encoded **32-byte key** using the `FileEncryption__Key` configuration key, via user secrets or an environment variable. Keep it consistent for decrypting existing uploads and **do not commit the key**. This is an application setup dependency, **not a Part 3 algorithm**.
 
-### 🔐 File Encryption Configuration
+### 🐳 Optional: Run the complete suite with Docker
 
-The `FileService.cs` uses encryption to keep uploaded files secure. To enable this, configure a **32-byte encryption key** encoded in Base64 using `FileEncryption__Key`. Store the key in a user secret or environment variable instead of your source code.
+The repository contains `docker-compose.yml` for `sqlserver`, `api`, and `mvc`. Add a local `.env` file at the repository root using **your own** values:
 
-**Important:**
-- 🔑 Keep the same key to decrypt previously uploaded files.
-- 🔒 Store the key securely and never commit it to GitHub.
-- 📁 Encrypted file uploads require a valid encryption key.
+```dotenv
+MSSQL_SA_PASSWORD=REPLACE_WITH_A_STRONG_LOCAL_PASSWORD
+FILE_ENCRYPTION_KEY=REPLACE_WITH_A_BASE64_ENCODED_32_BYTE_KEY
+```
 
----
+Then run:
 
-## 🖥️ Using the Application
+```powershell
+docker compose up --build
+```
 
-| Page | What you can do |
-|---|---|
-| **📊 Dashboard** | View live telemetry readings, interactive charts and connected-device counts |
-| **📡 Sensors** | Register, edit, delete, disconnect and reconnect sensor devices |
-| **🌡️ Telemetry** | Submit sensor readings and view recorded telemetry data |
-| **⚙️ Command Stream** | Monitor alerts and trends, send manual commands, Undo changes and view suggested actions |
-| **🌐 Network Topology** | Explore the weighted mesh network, BFS traversal, Prim's Minimum Spanning Tree (MST), alternative routes and simulated link failures |
-| **🌳 Historical Telemetry** | Search sensor readings by date range using the AVL Tree |
-| **📁 Files** | Upload, download and delete sensor-related documents |
+Open **http://localhost:5109**. The Docker configuration routes MVC requests to the `api` container and API database requests to `sqlserver`. Never commit the `.env` file or real secrets.
+
+**Troubleshooting:** If Network Topology cannot load, verify that the API is running and `SmartXApi:BaseUrl` matches its address. If historical queries fail, verify SQL Server connectivity and check the API console for migration or query errors. If a method or route name was recently renamed, ensure both the API and MVC projects have been rebuilt.
 
 ---
 
-## 🧱 Data Structures and Algorithms
+## 🖥️ Using the Part 3 Features
 
-| Structure / Algorithm | File | Why it was chosen |
+| Part 3 feature | What you do | What the application shows |
 |---|---|---|
-| **📥 FIFO Queue - `Queue<T>`** | `TelemetryDispatchService.cs` | Processes normal telemetry readings in the order they arrive |
-| **🚨 Priority Queue - `PriorityQueue<T, int>`** | `TelemetryDispatchService.cs` | Handles critical anomalies before normal readings |
-| **↩️ Stack - `Stack<T>`** | `CommandOperationsService.cs` | Supports Undo by reversing the most recent command first (LIFO) |
-| **🔎 Dictionary - `Dictionary<TKey, TValue>`** | `LiveStreamStore.cs` | Provides fast sensor lookups using unique device identifiers |
-| **📈 Sorted Dictionary - `SortedDictionary<TKey, TValue>`** | `LiveStreamStore.cs` | Keeps live telemetry trends ordered by timestamp |
-| **🧩 HashSet - `HashSet<T>`** | `LiveStreamStore.cs` | Prevents duplicate alert and disconnected-device identifiers |
-| **🌐 Graph - `Dictionary<string, List<Link>>`** | `MeshTopologyService.cs` | Represents sensors as nodes and wireless connections as weighted edges using an adjacency list |
-| **🔍 BFS - `Queue<string>`** | `MeshTopologyService.cs` | Traverses the sensor network level by level to identify reachable devices and routes with the fewest hops |
-| **🌳 Prim's Algorithm - `PriorityQueue<Link, ...>`** | `MeshTopologyService.cs` | Builds a Minimum Spanning Tree using the lowest available estimated energy costs |
-| **✅ MST Visited Set - `HashSet<string>`** | `MeshTopologyService.cs` | Tracks visited sensors and prevents cycles while constructing the MST |
-| **🔗 Link State Set - `HashSet<string>`** | `MeshLinkStateStore.cs` | Tracks disabled wireless connections without duplicates |
-| **🌲 AVL Tree - Custom Implementation** | `TelemetryAvlIndex.cs` | Keeps historical telemetry balanced by timestamp for efficient date-range searches |
+| **🌐 Mesh Network Graph** | Open **Network Topology** | Sensors, gateway, weighted candidate connections and current connection states |
+| **🔍 BFS traversal** | Select a sensor and inspect the BFS view | Reachability and a route using the fewest hops |
+| **🌳 Prim's MST** | Recalculate the MST or select **Show MST links only** | Minimum-total-weight spanning tree, selected links and estimated total weight |
+| **🔗 Link failure simulation** | Select a link, disable it, then restore it | Updated active edges, reachability and MST connections |
+| **🌲 Historical telemetry** | Select a sensor, choose start/end dates and search | Chronological results plus AVL tree height, nodes visited and search time |
+
+The Part 3 graph uses device identifiers and live connection status supplied by the existing application. If you need more history for a demonstration, let the application's telemetry simulation run or submit additional readings using the existing telemetry interface.
 
 ---
 
+## 🧱 Part 3 Data Structures
 
-## 🌐 Part 3 — Graphs and Mesh Routing
+This table intentionally covers **only** the structures that support the **Trees, Graphs and MST** task.
 
-### 🔗 1. Representing the Sensor Network as a Graph
+| Structure / algorithm | Implementation | Why it improves Network Topology |
+|---|---|---|
+| **🌐 Graph — `Dictionary<string, List<Link>>`** | `MeshTopologyService.cs` | Stores each online vertex with its neighbours, avoiding a scan of every possible sensor pair during traversal |
+| **🔍 BFS — `Queue<string>`** | `MeshTopologyService.cs` | Explores vertices level by level and finds routes with the fewest hops in an unweighted sense |
+| **🧭 BFS parent map — `Dictionary<string, string?>`** | `MeshTopologyService.cs` | Records how each device was first reached so the route can be reconstructed |
+| **🌳 Prim's MST — `PriorityQueue<Link, ...>`** | `MeshTopologyService.cs` | Always considers the lowest-weight candidate edge first while growing the tree |
+| **✅ MST visited set — `HashSet<string>`** | `MeshTopologyService.cs` | Prevents adding a vertex twice and therefore avoids cycles in the selected tree |
+| **🔗 Disabled link set — `HashSet<string>`** | `MeshLinkStateStore.cs` | Tracks unavailable links without duplicates and supports efficient membership checks |
+| **🌲 AVL Tree — custom balanced BST** | `TelemetryAvlIndex.cs` | Maintains logarithmic tree height for timestamped historical readings |
+| **📚 Per-device AVL index — `Dictionary<string, DeviceIndex>`** | `TelemetryAvlIndex.cs` | Selects the correct sensor's history without searching other sensors' trees |
 
-Smart-X uses a **weighted graph** to represent how sensors communicate with each other and the central gateway. Each sensor is a node, while the wireless connections between them are represented as edges.
+---
 
-- **📡 Vertices (V):** Registered sensors and the `CENTRAL-GATEWAY`.
-- **🔗 Edges (E):** Wireless connections between sensors and the gateway.
-- **⚡ Edge Weights:** Estimated energy needed to send and receive a telemetry packet, measured in **millijoules (mJ)**.
-- **🟢 Active Connections:** Links where both sensors are online and the connection has not been disabled.
+## 🌐 Graphs, BFS, and Prim's MST
 
-#### 📊 Example: Network with 15 Sensors
+### 🔗 1. Representing the sensor mesh as a graph
 
-A network containing **15 sensors** has **16 vertices**, including the central gateway.
+Smart-X uses an **undirected weighted graph**:
 
-The simulation normally generates **34 possible connections**:
+- **📡 Vertices (`V`):** registered sensor devices and the `CENTRAL-GATEWAY`.
+- **🔗 Edges (`E`):** candidate wireless connections between devices.
+- **⚡ Weights:** simulated **transmit + receive energy** for one packet in **millijoules (`mJ`)**.
+- **🟢 Active edges:** connections where both endpoints are online and the link has not been disabled.
 
-| Connection Type | Number | Purpose |
+The topology is deliberately **sparse**: the gateway connects directly to only a small selection of sensors, while other sensors may require multiple hops. Candidate connections are created deterministically from device identifiers for repeatable demonstrations; they are **not** based on measured distance, radio signal strength or real hardware.
+
+#### 📊 Example with 15 sensors
+
+| Connection type | Count | Reason |
 |---|---:|---|
-| 🔄 Ring connections | 15 | Connect neighbouring sensors |
-| 🔗 Alternative connections | 15 | Provide additional paths through the network |
-| 📡 Gateway connections | 4 | Connect selected sensors directly to the gateway |
-| **Total** | **34** | **Available network connections** |
+| Ring connections | 15 | Provide a path through adjacent simulated sensors |
+| Alternate sensor connections | 15 | Provide additional routes if one link fails |
+| Direct gateway uplinks | 4 | Give selected sensors direct gateway access |
+| **Total candidate links** | **34** | Available before filtering offline devices and disabled links |
 
-When all sensors are online and reachable, **Prim's algorithm selects 15 connections** to form a Minimum Spanning Tree (MST). The algorithm selects connections with the lowest total estimated energy cost while keeping the entire network connected.
+With **15 sensors + 1 gateway = 16 vertices**, a fully connected spanning tree contains exactly **15 edges (`V - 1`)**. Prim's algorithm selects those 15 tree edges from the available candidate links; it doesn't need all 34.
 
-### 💻 Code Example: Adjacency List
+#### 💻 C# example: adjacency list
 
-The project stores neighbours in a dictionary. This excerpt is from [`MeshTopologyService`](SmartX_Api/Services/MeshTopologyService.cs):
+From [`MeshTopologyService.cs`](SmartX_Api/Services/MeshTopologyService.cs):
 
 ```csharp
 private static Dictionary<string, List<Link>> MakeAdjacency(
     IEnumerable<string> onlineIds, List<Link> activeLinks)
 {
     var graph = new Dictionary<string, List<Link>>(Ids);
-    foreach (var id in onlineIds) graph[id] = new List<Link>();
+    foreach (var id in onlineIds)
+        graph[id] = new List<Link>();
+
     foreach (var link in activeLinks)
     {
         graph[link.From].Add(link);
         graph[link.To].Add(link with { From = link.To, To = link.From });
     }
+
     foreach (var neighbors in graph.Values)
         neighbors.Sort((a, b) => Ids.Compare(a.To, b.To));
+
     return graph;
 }
 ```
 
-Each connection is stored in **both directions**, because a link can be traversed from either endpoint. Sorting neighbours also makes BFS traversal order reproducible. 
-
----
+**Why this structure?** An adjacency list stores **`O(V + E)`** graph information rather than allocating an `O(V²)` matrix. Each undirected connection is entered in both directions so it can be traversed either way. Sorting neighbours makes traversal order reproducible in demonstrations.
 
 ### 🔍 2. Breadth-First Search (BFS)
 
-**🎯 Purpose:** Starting from `CENTRAL-GATEWAY`, BFS explores the network to identify reachable sensors and find routes with the **fewest wireless hops**.
+**🎯 Purpose:** Starting from `CENTRAL-GATEWAY`, find the **reachable sensors** and reconstruct paths with the **fewest wireless hops**. BFS does **not** minimise the sum of energy weights; it minimises the number of edges on the route.
 
-**⚙️ How It Works:**
+**⚙️ How it works:**
 
-1. **📥 Start at the Gateway:** Add `CENTRAL-GATEWAY` to a `Queue<string>` and mark it as visited.
-2. **🔎 Explore Neighbours:** Remove the first node from the queue and check its neighbouring sensors.
-3. **🔗 Track Routes:** Add unvisited neighbours to the queue and record their parent nodes to reconstruct the route.
-4. **🔄 Continue Traversal:** Repeat until the queue is empty and all reachable sensors have been explored.
+1. **📥 Start:** Add the gateway to a `Queue<string>` and mark it discovered.
+2. **🔎 Explore:** Dequeue a vertex and inspect its neighbours.
+3. **🔗 Record paths:** Add each undiscovered neighbour to the queue and save its parent.
+4. **🔄 Repeat:** Continue until the queue is empty; devices with no recorded parent are unreachable from the gateway.
 
-#### 💻 Code Example: BFS Implementation
-
-From [`MeshTopologyService.BreadthFirstSearch`](SmartX_Api/Services/MeshTopologyService.cs):
+#### 💻 C# example: BFS implementation
 
 ```csharp
-private static (List<string> Order, Dictionary<string, string?> Parent) BreadthFirstSearch(
-    Dictionary<string, List<Link>> graph, string start)
+private static (List<string> Order, Dictionary<string, string?> Parent)
+    BreadthFirstSearch(Dictionary<string, List<Link>> graph, string start)
 {
     var order = new List<string>();
     var parent = new Dictionary<string, string?>(Ids) { [start] = null };
     var queue = new Queue<string>();
     queue.Enqueue(start);
+
     while (queue.Count > 0)
     {
         string current = queue.Dequeue();
@@ -345,31 +340,26 @@ private static (List<string> Order, Dictionary<string, string?> Parent) BreadthF
             queue.Enqueue(edge.To);
         }
     }
+
     return (order, parent);
 }
 ```
 
-**Performance:** BFS runs in time with an adjacency list. Each reachable vertex is discovered once, and each active undirected edge is considered from its endpoints. Its parent dictionary also identifies online devices that cannot be reached from the gateway.
-
----
+**Example:** If the route is **Gateway → Sensor A → Sensor B**, BFS reports **2 hops**. If a direct Gateway → Sensor B link exists, BFS prefers that **1-hop** route even when its energy estimate is higher. BFS visits each reachable vertex once and considers each active edge from its endpoints: **`O(V + E)`** time.
 
 ### 🌳 3. Prim's Minimum Spanning Tree (MST)
 
-**🎯 Purpose:** Prim's algorithm selects wireless connections that keep all gateway-reachable sensors connected while using the **lowest total estimated energy cost** and avoiding cycles.
+**🎯 Purpose:** Select a set of wireless links that connects all **gateway-reachable** vertices with the **lowest sum of edge weights**, without cycles. This satisfies the rubric's **Prim's-or-Kruskal's MST requirement**; Smart-X uses **Prim's**.
 
-**⚙️ How It Works:**
+**⚙️ How it works:**
 
-1. **📡 Start at the Gateway:** Begin building the Minimum Spanning Tree from `CENTRAL-GATEWAY`.
-2. **📥 Add Available Connections:** Insert the gateway's available wireless links into a min-heap using `PriorityQueue`.
-3. **⚡ Choose the Lowest-Cost Link:** Select the connection with the lowest estimated energy cost that leads to a sensor not already included in the MST.
-4. **🔗 Expand the Network:** Add the selected sensor to the MST and insert its available outgoing connections into the priority queue.
-5. **🔄 Repeat the Process:** Continue selecting the lowest-cost valid connections until all gateway-reachable sensors are connected.
+1. **📡 Begin at the gateway.**
+2. **📥 Enqueue candidate connections** in a `PriorityQueue` (min-heap).
+3. **⚡ Take the lowest-weight edge** leading to an unvisited sensor.
+4. **🔗 Add that sensor** and enqueue its available outgoing edges.
+5. **🔄 Repeat** until all gateway-reachable sensors are part of the tree.
 
-**✅ Result:** A Minimum Spanning Tree that connects all reachable sensors using the lowest total edge weight without creating unnecessary loops.
-
-#### Code example: selecting MST edges
-
-From [`MeshTopologyService.PrimsMinimumSpanningTree`](SmartX_Api/Services/MeshTopologyService.cs):
+#### 💻 C# example: Prim's edge selection
 
 ```csharp
 var visited = new HashSet<string>(Ids) { start };
@@ -388,7 +378,7 @@ void EnqueueNeighbors(string id)
 EnqueueNeighbors(start);
 while (minHeap.TryDequeue(out var edge, out _))
 {
-    if (!visited.Add(edge.To)) continue; 
+    if (!visited.Add(edge.To)) continue;  // Avoid cycles.
     selected.Add(edge);
     total += edge.Cost;
     parent[edge.To] = edge.From;
@@ -396,13 +386,15 @@ while (minHeap.TryDequeue(out var edge, out _))
 }
 ```
 
----
+`PriorityQueue` supplies the cheapest available edge; `HashSet` prevents cycles; and the `parent` dictionary records the route through the chosen tree. With a heap-based implementation, Prim's runs in approximately **`O(E log E)`** time and requires **`O(V + E)`** storage.
 
-### 4. How the energy values (5 mJ, 6 mJ, 15 mJ) are calculated
+**Important:** Prim's optimises the **total selected tree weight**. It does **not** guarantee that each individual sensor has the minimum-energy path to the gateway. The paths displayed for the MST follow the selected tree edges.
 
-Arbitrary costs would allow an MST calculation, but wouldn't explain *why* one wireless link is preferred. This project therefore assigns each link a repeatable **estimated energy cost**.
+### ⚡ 4. How the simulated energy weights are calculated
 
-The C# method is [`EstimateEnergyMilliJoules`](SmartX_Api/Services/MeshTopologyService.cs):
+To make the MST weights meaningful, each link gets an **estimated energy cost** rather than an arbitrary number. The estimate includes assumed transmitting and receiving radio power, packet duration and retransmission attempts.
+
+#### 💻 C# example: per-packet energy
 
 ```csharp
 private static int EstimateEnergyMilliJoules(int distanceMetres, int attempts)
@@ -410,82 +402,115 @@ private static int EstimateEnergyMilliJoules(int distanceMetres, int attempts)
     const int receivePowerMw = 42;
     const int durationMs = 40;
     int transmitPowerMw = 55 + 2 * distanceMetres;
+
     return Math.Max(1, (int)Math.Ceiling(
-        (transmitPowerMw + receivePowerMw) * durationMs * attempts / 1000d));
+        (transmitPowerMw + receivePowerMw)
+        * durationMs * attempts / 1000d));
 }
 ```
 
-**Worked examples using the same formula:**
+The general calculation is:
 
-| Simulated distance | TX power | Attempts | Calculation | Displayed cost |
+```text
+Energy (mJ) = [TX power (mW) + RX power (mW)]
+              × transmission duration (ms)
+              × expected attempts / 1000
+```
+
+| Simulated distance | TX power | Attempts | Calculation | Displayed weight |
 |---:|---:|---:|---|---:|
-| 14 m | 83 mW | 1 | `(83 + 42) × 40 × 1 / 1000 = 5.00` | **5 mJ** |
-| 17 m | 89 mW | 1 | `(89 + 42) × 40 × 1 / 1000 = 5.24` | **6 mJ** (rounded up) |
-| 43 m | 141 mW | 2 | `(141 + 42) × 40 × 2 / 1000 = 14.64` | **15 mJ** (rounded up) |
+| 14 m | 83 mW | 1 | `(83 + 42) × 40 × 1 ÷ 1000 = 5.00` | **5 mJ** |
+| 17 m | 89 mW | 1 | `(89 + 42) × 40 × 1 ÷ 1000 = 5.24` | **6 mJ** |
+| 43 m | 141 mW | 2 | `(141 + 42) × 40 × 2 ÷ 1000 = 14.64` | **15 mJ** |
 
-**Important distinction:** Prim's minimises the **sum of the edges in the selected tree**. It does **not** necessarily minimise the energy used by the route to *each individual* sensor or the energy consumed by every packet in a full traffic workload. 
+The final value is **rounded upwards** using `Math.Ceiling`. Distances, power assumptions and retransmission counts are deterministic **simulation inputs**, not readings from physical ESP32 radios.
+
+**Example interpretation:** If the currently selected MST contains edges with weights of 5 mJ, 6 mJ and 15 mJ, those values contribute **26 mJ** to the total MST weight. This is a **sum of selected link costs for one illustrative packet per edge**, not total application power consumption.
+
+### 🔗 5. Simulated wireless-link failure and recovery
+
+The topology recalculates when a user disables an existing candidate link:
+
+1. The selected link is stored in `MeshLinkStateStore` using a canonical endpoint-pair key such as `A|B`. A `HashSet<string>` prevents duplicate disabled entries.
+2. `MeshTopologyService` excludes links with offline endpoints and links marked as disabled when building the **active adjacency list**.
+3. **BFS** recalculates reachable devices and fewest-hop routes.
+4. **Prim's** recalculates the MST from the surviving connections.
+5. The MVC graph displays the disabled link and any changed selected routes. If no alternative exists, the device can be **online but unreachable**.
+
+#### 💻 C# example: disabled link state
+
+```csharp
+public void SetDisabled(string from, string to, bool disabled)
+{
+    lock (_gate)
+    {
+        string key = EdgeKey(from, to);
+        if (disabled) _disabled.Add(key);
+        else _disabled.Remove(key);
+    }
+}
+```
+
+**Why this matters:** A failed wireless link does not necessarily mean the sensor has gone offline. Keeping link failures separate from device status lets the simulator demonstrate **route recovery** without modifying the registered sensor or its persisted telemetry. Link state is held **in memory** and resets when the API process restarts.
 
 ---
 
-### 5. Simulated link failure and network recovery
+## 🌲 AVL Tree and Historical Telemetry
 
-The extra gateway uplinks and alternative sensor links let the application demonstrate how a mesh reacts when a connection goes down.
+### 🌱 1. Why an AVL Tree?
 
-- `MeshLinkStateStore` keeps disabled edge keys in a `HashSet<string>`.
-- `MeshTopologyService.Calculate()` removes failed and offline-endpoint links from the **active** adjacency list.
-- BFS, Prim's MST and optional Dijkstra routes are recalculated from that active graph.
-- A sensor remains reachable **only if another path exists**. Otherwise it is reported as unreachable even if the sensor itself is still online.
-- Restoring a link, or pressing **Reset all**, makes it available for subsequent calculations.
+Smart-X must retrieve past readings for a chosen sensor between two timestamps. A regular Binary Search Tree can become a long chain when readings arrive in sorted timestamp order, leading to **`O(n)`** searching in the worst case.
 
-The changes are temporary **in-memory simulation state**. They do not disconnect hardware, delete SQL data or modify sensor registrations.
+An **AVL Tree** is a self-balancing BST. After insertion, it keeps the difference between left and right subtree heights at no more than one by performing rotations where required. This ensures the tree height stays **`O(log n)`**.
 
----
+The custom index in [`TelemetryAvlIndex.cs`](SmartX_Api/Services/TelemetryAvlIndex.cs) uses:
 
-## 🌳 Part 3 - AVL Historical Telemetry
+- **📚 A separate tree per sensor**, found through `Dictionary<string, DeviceIndex>`.
+- **🕒 A compound key `(Timestamp, Id)`**, retaining different readings that have the same timestamp.
+- **🔄 Left/right and double rotations** to preserve AVL balance.
+- **🔍 Range traversal with branch pruning** to skip timestamps outside the requested interval.
+- **📊 Diagnostics** showing indexed count, tree height, nodes visited and in-memory search time.
 
-### 1. Why use an AVL Tree?
+### 🔄 2. How self-balancing works
 
-A regular Binary Search Tree (BST) can become a long chain when readings arrive in timestamp order. Searching that badly shaped tree can approach **O(n)**. An AVL Tree checks the height difference between subtrees after insertion and rotates nodes to keep the height **O(log n)**.
+After inserting a reading, the tree recomputes the node height and its balance factor:
 
-This suits Smart-X because historical telemetry is naturally timestamped, and users frequently ask: **“Show readings from this date and time to that date and time.”**
+```text
+Balance factor = height(left subtree) − height(right subtree)
+```
 
-The AVL implementation in [`TelemetryAvlIndex.cs`](SmartX_Api/Services/TelemetryAvlIndex.cs) uses:
+A balance factor greater than `1` indicates a left-heavy subtree; below `-1` indicates a right-heavy subtree. The code applies the appropriate rotation:
 
-- **One index per device**, stored in a `Dictionary<string, DeviceIndex>`.
-- A comparison key of **`(Timestamp, Id)`**. The database ID breaks ties so two readings at the same timestamp are retained.
-- **Left and right rotations**, plus double rotations where necessary.
-- **In-order range traversal**, which returns matching readings chronologically.
-- **Branch pruning**, so subtrees outside the requested time interval aren't searched unnecessarily.
-
-### 2. How balancing works
-
-After inserting a reading, the tree calculates the difference between left and right subtree heights. The excerpt below is taken from the project's `Insert` method:
+#### 💻 C# example: AVL rebalancing
 
 ```csharp
 Refresh(node);
 int balance = Height(node.Left) - Height(node.Right);
+
 if (balance > 1)
 {
     if (Compare(value, node.Left!.Reading) > 0)
         node.Left = RotateLeft(node.Left);
     return RotateRight(node);
 }
+
 if (balance < -1)
 {
     if (Compare(value, node.Right!.Reading) < 0)
         node.Right = RotateRight(node.Right);
     return RotateLeft(node);
 }
+
 return node;
 ```
 
-**Why this matters:** For 100,000 indexed readings, a balanced tree has a height measured in **tens of levels**, not a chain of 100,000 nodes. This controls lookup depth even when records arrive mostly in date order. This is a complexity statement, not a benchmark result.
+The code handles left-left, left-right, right-right and right-left insertion cases through single or double rotations. Balanced height matters because the number of levels searched grows slowly even when telemetry history becomes large.
 
-### 3. How timestamp-range searches work
+### 🔍 3. Timestamp-range searching
 
-For a request such as **10:00–10:30**, the search follows only branches that might contain timestamps inside that interval. In-order traversal returns the results in chronological order.
+For example, a user may request readings from **10:00 to 10:30**. The AVL traversal returns matching readings in timestamp order while avoiding subtrees whose values cannot fall in that interval.
 
-From the source's `SearchRange` method:
+#### 💻 C# example: pruned range traversal
 
 ```csharp
 private static void SearchRange(Node? n, DateTime from, DateTime to,
@@ -493,240 +518,203 @@ private static void SearchRange(Node? n, DateTime from, DateTime to,
 {
     if (n is null || output.Count >= max) return;
     nodesVisited++;
+
     if (n.Reading.Timestamp >= from)
         SearchRange(n.Left, from, to, max, output, ref nodesVisited);
-    if (n.Reading.Timestamp >= from && n.Reading.Timestamp <= to && output.Count < max)
+
+    if (n.Reading.Timestamp >= from &&
+        n.Reading.Timestamp <= to && output.Count < max)
         output.Add(n.Reading);
+
     if (n.Reading.Timestamp <= to)
         SearchRange(n.Right, from, to, max, output, ref nodesVisited);
 }
 ```
 
-If the current timestamp is **before** the requested range, the left branch is skipped. If it is **after** the range, the right branch is skipped. This is the advantage over looping through every historical reading.
+If the current node is **before** the requested range, the left subtree cannot contain any newer timestamps, so it is skipped. If the current node is **after** the range, the right subtree is skipped. An in-order traversal keeps returned readings chronological.
 
-### 4. How it works with SQL Server
+**Complexity:** Once the index has been built, a bounded range query typically costs **`O(log n + k)`**, where `n` is the number of indexed readings and `k` is the number returned. A query returning nearly every record still requires `O(n)` output work.
 
-SQL Server remains the source of truth. The tree is an **in-memory query index**, not a replacement database.
+### 🗃️ 4. How the AVL index works with SQL Server
 
-1. On the first history query for a sensor, the index loads that sensor's existing readings from SQL Server.
-2. Each reading is inserted into the AVL Tree; rotations maintain balance.
-3. Subsequent queries fetch only newer rows with a higher database `Id` and add them to the tree.
-4. Deleting readings or sensors invalidates the affected cached tree so the next query can rebuild it.
-5. A `SemaphoreSlim` protects the shared in-memory index from concurrent updates and searches.
+SQL Server remains the **persistent source of truth**. The AVL Tree is a **temporary in-memory index**, not another database:
 
-The API validates the device, checks the date interval, and limits responses to **1–500 rows** per query.
+1. The first query for a sensor loads that sensor's existing readings from SQL Server.
+2. Each row is inserted into the AVL Tree; rotations maintain balance.
+3. Later queries refresh the tree with newer database rows based on reading IDs.
+4. When readings or a sensor are deleted, the corresponding cached tree is invalidated and can be rebuilt.
+5. A `SemaphoreSlim` prevents concurrent code from mutating and searching the shared index at the same time.
 
-### 5. What the AVL diagnostics mean
+`HistoricalNetworkController` validates the selected sensor and date range and limits results to **1–500 readings per request**.
 
-The History panel shows:
+### 📈 5. AVL search diagnostics
 
 | Field | Meaning |
 |---|---|
-| **Indexed readings** | Total readings currently represented in that sensor's AVL index |
-| **Tree height** | Longest root-to-leaf path, in nodes; useful evidence of balancing |
-| **Nodes visited** | Number of tree nodes examined during the current range query |
-| **Returned readings** | Number of results shown (subject to the query limit) |
-| **Search milliseconds** | Time spent **only traversing the in-memory AVL Tree** |
+| **Indexed readings** | Number of readings currently in that sensor's AVL index |
+| **Tree height** | Root-to-leaf depth of the balanced tree, measured in nodes |
+| **Nodes visited** | Number of nodes inspected during the requested range search |
+| **Returned readings** | Matching records actually returned, subject to the response limit |
+| **Search milliseconds** | Time spent on the in-memory AVL traversal only |
 
-**Measurement boundary:** The displayed search time does **not** include SQL fetching, index construction, network travel or MVC rendering. A first-time request may be much slower because it loads and indexes historical rows; that setup cost must not be confused with the timed AVL lookup.
+**Measurement boundary:** Search milliseconds **exclude** SQL retrieval, tree construction, MVC rendering and network latency. The first history request can be slower than a repeat request because it must populate the index first.
 
 ---
 
 ## 📊 Performance and Scalability
 
-The following explains **how the algorithms scale as data grows**. These are mathematical bounds derived from the implementations, **not claimed real-world benchmark measurements**.
+The following values are **algorithmic complexity bounds**, not benchmark timings measured from the user's machine.
 
-### Complexity summary
+Let `V` be the number of graph vertices, `E` active undirected links, `n` indexed readings for one sensor and `k` matching historical readings.
 
-Let `V` be graph vertices (sensors plus gateway), `E` the number of active undirected links, `n` the readings indexed for one sensor, and `k` the readings returned by a range query.
+| Operation | Time complexity | Space / notes |
+|---|---|---|
+| Build adjacency list | `O(V + E)` before neighbour sorting | `O(V + E)` graph storage; sorting adds additional work |
+| **BFS traversal** | **`O(V + E)`** | `O(V)` queue/parent/visited information |
+| **Prim's MST using a priority queue** | **`O(E log E)`** | `O(V + E)` including queued candidate edges |
+| HashSet link lookup | `O(1)` average | Efficient disable/restore membership checks |
+| AVL insertion and rebalancing | **`O(log n)`** | `O(log n)` recursive call stack |
+| AVL timestamp-range search | **`O(log n + k)`** | `O(log n + k)` including output storage |
+| Build a new AVL index | `O(n log n)` insertion work | `O(n)` tree space, plus database retrieval |
+| Per-device index lookup | `O(1)` average | Dictionary keyed by sensor ID |
 
-| Operation | Time complexity | Space complexity | Why |
-|---|---|---|---|
-| Build adjacency list | `O(V + E)` before neighbour sorting | `O(V + E)` | Creates an entry per vertex and two directed neighbour entries per undirected link |
-| BFS traversal | **`O(V + E)`** | `O(V)` working space | Each reachable vertex is enqueued once |
-| Prim's MST (priority queue) | **`O(E log E)`** | `O(V + E)` | Candidate edges are managed by a min-heap; visited set prevents cycles |
-| Optional Dijkstra routes | **`O(E log E)`** upper bound | `O(V + E)` | Uses a heap to expand lower-cost paths |
-| AVL insertion | **`O(log n)`** | `O(log n)` recursion stack | Rotations keep height logarithmic |
-| AVL timestamp-range search | **`O(log n + k)`** on the built balanced index | `O(log n + k)` including results | Finds the range and visits matching entries while pruning others |
-| Build a fresh AVL index | **`O(n log n)`** for insertion work | `O(n)` | Existing rows must be loaded and inserted once |
-| Dictionary device lookup | **`O(1)` average** | `O(V)` | Hash lookup by device ID |
+### 🌐 Scaling the mesh
 
-**Implementation detail:** The actual graph builder also sorts neighbour lists for deterministic output. That adds sorting work (up to approximately `O(E log E)` across all lists); the BFS complexity above refers to traversal **after** the graph is built.
+For at least five sensors, the current sparse generator produces approximately `2n + g` links, where `g` is up to four direct gateway connections. This scales with the number of sensors instead of connecting every possible pair.
 
-### Scaling example 1 — More sensors
-
-With **all devices online** and no failed links, the current sparse topology generates approximately `2n + g` candidate links for `n ≥ 5` sensors, where `g` is up to 4 gateway connections. It is **not** a complete graph with one link for every possible pair.
-
-| Number of sensors | Vertices (including gateway) | Candidate links in this model | Links in a connected MST |
+| Sensors | Graph vertices | Candidate links in this simulated topology | MST edges if fully connected |
 |---:|---:|---:|---:|
 | 15 | 16 | 34 | 15 |
 | 150 | 151 | 304 | 150 |
 | 1,500 | 1,501 | 3,004 | 1,500 |
 
-These link counts follow the **current topology generation rules**; real wireless networks would have different physical constraints. The important result is that candidate links grow approximately **linearly** with the number of sensors. BFS therefore scales with the graph rather than checking all sensor pairs.
+These are **topology-generation examples**, not results from a physical wireless network. Actual radio connectivity would depend on placement, signal propagation, interference and hardware constraints.
 
-### Scaling example 2 — More historical readings
+### 🌲 Scaling timestamp searches
 
-A linear scan may examine up to **all n readings**, while an AVL index keeps the search depth logarithmic and visits matching results plus the nodes needed to reach them.
-
-| Reading count for one sensor | Linear scan: worst-case records examined | Approximate `log2(n)` decision levels* |
+| History size per sensor | Linear search: possible entries examined | Approximate `log₂(n)` growth level |
 |---:|---:|---:|
 | 1,000 | 1,000 | 10 |
 | 10,000 | 10,000 | 14 |
 | 100,000 | 100,000 | 17 |
 
-*The `log2(n)` column illustrates the **growth rate**; it is not a measured AVL height or nodes-visited count. Real AVL balancing and range size affect the exact values.*
+The logarithmic column illustrates the **growth trend**, not an exact measured AVL height. AVL height is bounded by a constant multiple of `log n`, and the number of nodes visited also depends on how many readings match the date range.
 
-For example, a date range returning **20 records** has an idealised search cost proportional to **`log n + 20`**, rather than scanning every record. On the other hand, a date range returning almost **all records** still takes **O(n)** to output those records — an AVL Tree cannot avoid reading the results the user asks to see.
+### 🧪 Collect real evidence during the demo
 
-### How to collect real performance evidence
+To support the complexity discussion with observable results:
 
-To demonstrate performance without inventing timing figures:
+1. Select a sensor with many persisted readings.
+2. Run a **wide** date-range query and record the indexed count, tree height, nodes visited, records returned and search time.
+3. Run a **narrow** date-range query on the **same, warmed-up tree**.
+4. Repeat searches to account for timing variation. Explain which time range and dataset size were used.
+5. Compare **nodes visited** rather than relying only on millisecond timings, which can be very small and noisy.
 
-1. Ensure one sensor has a substantial amount of persisted telemetry. Allow the 5-second simulation to generate history, or use an existing dataset.
-2. Search a **wide** interval on the Network Topology page. Write down `indexedReadings`, `treeHeight`, `nodesVisited`, `returnedCount` and `searchMilliseconds`.
-3. Search a **narrower** interval on the **same sensor**, with the same cache already populated.
-4. Compare nodes visited and the returned result count. Repeat searches to account for timing variation.
-5. If presenting results, state the dataset size, machine and time range. **Do not compare cold-start SQL loading to warmed AVL traversal as though they measure the same operation.**
-
-| Query / dataset | Indexed readings | AVL height | Nodes visited | Rows returned | In-memory time (ms) |
+| Query | Indexed readings | AVL height | Nodes visited | Returned | AVL search (ms) |
 |---|---:|---:|---:|---:|---:|
-| Wide range — record during demo | — | — | — | — | — |
-| Narrow range — record during demo | — | — | — | — | — |
-| Larger dataset — record during demo | — | — | — | — | — |
+| Wide range (enter measured result) | — | — | — | — | — |
+| Narrow range (enter measured result) | — | — | — | — | — |
+| Larger dataset (enter measured result) | — | — | — | — | — |
 
-The cells are intentionally left blank until actual test results are collected.
+**Do not invent performance measurements.** Fill the table from the actual application during testing or demonstration.
 
 ---
 
 ## 🔌 API Reference
 
-### Network topology
+### 🌐 Network topology
 
-| Method | Endpoint | Purpose |
+| HTTP method | Endpoint | Purpose |
 |---|---|---|
-| `GET` | `/api/networktopology` | Returns nodes, active/disabled links, BFS order, MST links, costs and sensor routes |
-| `GET` | `/api/networktopology/route/{deviceIdentifier}` | Returns one sensor's reachability and current paths |
-| `PUT` | `/api/networktopology/links/state` | Disables or restores a valid candidate wireless link |
-| `POST` | `/api/networktopology/links/reset` | Restores all links disabled in the simulator |
-| `GET` | `/api/networktopology/history` | Queries the AVL Tree for a sensor and timestamp range |
+| `GET` | `/api/networktopology` | Return nodes, candidate/active links, BFS traversal and Prim's MST results |
+| `GET` | `/api/networktopology/route/{deviceIdentifier}` | Return routing and reachability information for a selected sensor |
+| `PUT` | `/api/networktopology/links/state` | Disable or restore a valid candidate wireless link |
+| `POST` | `/api/networktopology/links/reset` | Restore all manually disabled links |
+| `GET` | `/api/networktopology/history` | Search sensor telemetry by date range using the AVL index |
 
-**Example: inspect the current network**
+Inspect the graph in PowerShell:
 
 ```powershell
 curl.exe http://localhost:5095/api/networktopology
 ```
 
-**Example: query historical readings** (replace the ID and dates with data that exists in your database)
+Example date-range request (adjust the device ID and timestamps):
 
 ```text
 GET /api/networktopology/history?deviceIdentifier=SENSOR-TEMP-001&from=2026-11-01T00:00:00Z&to=2026-11-11T00:00:00Z&limit=200
 ```
 
-The endpoint can return up to **500 records** per request. It also reports AVL index size, tree height, nodes visited and in-memory search time.
+Example link-state request body:
 
-**Example: disable a synthetic wireless link**
-
-```http
-PUT /api/networktopology/links/state
-Content-Type: application/json
-
+```json
 {
-  "from": "SENSOR-A",
-  "to": "SENSOR-B",
+  "from": "EXISTING-SENSOR-A",
+  "to": "EXISTING-SENSOR-B",
   "disabled": true
 }
 ```
 
-The two endpoint IDs must form an **existing candidate link**. Use actual `from` and `to` values from the topology response, not the placeholder IDs above. Set `disabled` to `false` to restore a link. Reset all links with `POST /api/networktopology/links/reset`.
+Submit that JSON to `PUT /api/networktopology/links/state`. Use **actual endpoints of an existing candidate link** from the topology response, not the placeholders above. Set `disabled` to `false` to restore that link.
 
-### MVC routes
+### 🖥️ MVC proxy actions
 
-The frontend calls its own MVC actions, which forward requests to the API:
+The dashboard communicates through MVC actions that forward requests to the API:
 
 - `GET /Home/NetworkTopologyData`
 - `GET /Home/NetworkHistory`
 - `POST /Home/UpdateMeshLink`
 - `POST /Home/ResetMeshLinks`
 
-The MVC link-update actions validate anti-forgery tokens. The underlying API's simulation endpoints **do not implement authentication or authorisation**, so the project should be demonstrated in a controlled local environment rather than exposed publicly without additional protection.
+MVC link updates use anti-forgery validation. Direct API simulation controls are **not intended for a publicly exposed production network-management service** without access control.
 
 ---
 
 ## 🧪 Part 3 Demonstration Guide
 
-These are **manual verification steps and expected behaviours**, not claims that an automated test suite has passed. Run them while the API, MVC client and database are available.
+These are **manual verification steps and expected results**, not claims that an automated suite has already passed.
 
-| Demo | Steps | Expected result / explanation |
+| Demo | Action | Expected evidence |
 |---|---|---|
-| **1. Weighted graph** | Open **Network Topology**; point out nodes, weighted connections and the gateway | Sensors are graph vertices; edges have estimated mJ costs; not every sensor connects directly to the gateway |
-| **2. BFS** | Select a sensor and inspect **BFS Traversal** and **BFS fewest hops** | Sensors are visited in breadth-first order; the path minimises hop count, not energy |
-| **3. Prim's MST** | Click **Recalculate MST** and **Show MST links only** | The green tree connects gateway-reachable nodes without cycles; for connected `V`, it has `V − 1` links |
-| **4. MST energy** | Compare individual link labels with **Total MST energy** | Total MST energy is the sum of selected tree-link weights; it is not an electricity meter reading |
-| **5. Link failure** | Select a currently active MST link and press **Disable link** | The link becomes disabled, and BFS/MST recompute from available edges; an alternate path is used if one exists |
-| **6. Restore** | Press **Restore link** or **Reset all** | Connections become available again and routing is recalculated |
-| **7. Unreachable sensor** | If possible, disable enough links to isolate a sensor or section | An online device without an active path to the gateway is reported as unreachable; don't confuse this with an offline device |
-| **8. AVL history** | Select a sensor, enter **From** and **To** and click **Search History** | Results are chronological and show AVL height, nodes visited and in-memory lookup time |
-| **9. Duplicate timestamps** | Query a period containing readings that share a timestamp, where present | Different reading IDs remain distinguishable; matching rows are retained |
-| **10. Large-history evidence** | Compare wide and narrow searches on a sensor with many rows | Use actual indexed count / visited-node measurements to discuss pruning and logarithmic tree height |
-| **11. Regression** | Revisit **Telemetry**, **Command Stream** and **Sensors** | Existing queue processing, alerts, Undo and registration features still function |
+| **1. Graph model** | Open **Network Topology** | Sensor nodes, gateway, weighted candidate links and online/disabled indicators |
+| **2. BFS** | Select a sensor and inspect BFS traversal and route | Reachability and a route with the fewest hops |
+| **3. Prim's MST** | Recalculate or select **Show MST links only** | Selected MST edges connect all gateway-reachable vertices without cycles |
+| **4. MST total weight** | Compare individual green edge weights with the MST energy card | Total equals the sum of selected link weights, measured in simulated mJ |
+| **5. Link failure** | Disable a link that currently belongs to the MST | BFS and Prim's recalculate using the active links; the result may change |
+| **6. Alternative connection** | Inspect the route after a failure | A replacement path is used where available; otherwise a sensor becomes unreachable |
+| **7. Restore links** | Restore the selected connection or use **Reset all** | Candidate connection becomes active again and the graph recalculates |
+| **8. AVL history** | Select a sensor and search a timestamp interval | Chronological readings plus tree-height and nodes-visited diagnostics |
+| **9. Timestamp ties** | Search an interval containing two rows with the same timestamp (if present) | Both distinct readings remain identifiable by their IDs |
+| **10. Scalability evidence** | Compare wide and narrow AVL searches on a larger history | Actual tree height, nodes visited, returned count and traversal time |
 
-**Recommended presentation order:** Begin with the graph model → show BFS → show Prim's tree and total estimated weight → disable one wireless link → show an alternative route → finish with an AVL date-range query and its diagnostics. This demonstrates each rubric requirement without getting distracted by extra features.
-
----
-
-## 🐳 Docker
-
-The repository includes `docker-compose.yml` with three services:
-
-- **`sqlserver`** — SQL Server 2022 with a persistent data volume.
-- **`api`** — the ASP.NET Core API, available locally on port `5095`.
-- **`mvc`** — the MVC web application, available locally on port `5109`.
-
-Install Docker Desktop with Docker Compose. Create a local `.env` file in the repository root containing your **own** development credentials:
-
-```dotenv
-MSSQL_SA_PASSWORD=REPLACE_WITH_A_STRONG_LOCAL_PASSWORD
-FILE_ENCRYPTION_KEY=REPLACE_WITH_BASE64_ENCODED_32_BYTE_KEY
-```
-
-The encryption key should represent exactly **32 random bytes encoded in Base64**. The `.env` file is ignored by Git; don't add real passwords or keys to the README or repository.
-
-Run from the repository root:
-
-```powershell
-docker compose up --build
-```
-
-Then open **http://localhost:5109**. The Docker setup uses the container service name `api` for MVC-to-API communication and `sqlserver` for the database. Link-failure simulation state still resets whenever the API container restarts.
+**Recommended assessment sequence:** Open the graph → explain the adjacency list → demonstrate BFS → show Prim's MST and weight total → disable and restore a link → run a historical AVL range query and discuss the diagnostics.
 
 ---
 
 ## ⚖️ Design Decisions and Limitations
 
-**Why this design was chosen:** The assignment focuses on showing the role of data structures and algorithms. Keeping BFS, Prim's and AVL logic in dedicated C# services makes their use easier to inspect than hiding the logic in controller actions or client-side scripts. The visual graph makes their results understandable during a live demonstration.
-
-| Decision or limitation | Effect / trade-off |
+| Choice | Why it was made / limitation |
 |---|---|
-| **Synthetic mesh topology** | Repeatable demonstrations without radios; links are not based on measured position, RSSI or signal strength |
-| **Energy-weighted edges** | Meaningful weights for Prim's, but only a simplified per-packet TX/RX estimate; not a battery-consumption measurement |
-| **Sparse ring + extra links** | Demonstrates multi-hop routing and alternative connectivity without generating a fully connected graph |
-| **Gateway-rooted Prim's MST** | Minimises summed selected edge weights for the reachable component; not every individual packet route is necessarily minimum energy |
-| **Optional Dijkstra** | Makes the distinction between lowest-total-cost tree and lowest-cost individual route visible, but is **not required for the rubric's Prim's/Kruskal's choice** |
-| **In-memory link-failure store** | Fast demonstration with no new migrations; resets on API restart and is shared across API requests |
-| **In-memory per-device AVL cache** | Fast repeated range queries; first query loads SQL rows, and storing many readings consumes RAM |
-| **AVL diagnostics** | Shows tree structure and traversal effort, but `searchMilliseconds` excludes database loading and web request time |
-| **Graph rendering limit** | The SVG limits how many devices are drawn for readability (55 in the supplied JavaScript); backend graph calculations use the device set available to the API |
-| **Local demo API controls** | MVC posts use anti-forgery validation, but direct API link controls lack authorisation and should not be exposed as a production control plane |
+| **Simulated mesh connections** | Makes the project repeatable without radio hardware; sensor distances and connection availability are not physically measured |
+| **Sparse weighted graph** | Shows realistic *multi-hop behaviour* in a demonstration without allocating every possible edge |
+| **Adjacency list rather than a matrix** | Reduces memory for a sparse graph and supports efficient BFS traversal |
+| **BFS** | Provides reachability and fewest-hop routes, not minimum-energy routes |
+| **Prim's MST** | Minimises the **sum of selected tree-edge weights**, not the energy of every individual telemetry packet |
+| **Estimated TX + RX energy** | Makes weights interpretable, but results are model assumptions rather than actual energy measurements |
+| **HashSet link-failure state** | Supports fast simulation without a new database table; reset occurs on API restart |
+| **In-memory AVL index** | Speeds repeat historical searches but initially loads readings from SQL and consumes RAM as history grows |
+| **AVL search diagnostics** | Show tree-search effort but exclude SQL loading, index construction and UI rendering |
+| **SVG graph display limit** | Limits rendered devices for readability; it is separate from backend graph calculation |
+| **Demo-only control endpoints** | Suitable for a local assessment; production use would require authentication and authorisation |
 
-**Possible production improvements** would include real radio-link metrics, authenticated network-management endpoints, persistent per-link state, bounded historical indexing and benchmark measurements from large datasets. These are not claimed as currently implemented.
+**Possible future improvements:** Replace synthetic link weights with hardware radio measurements, secure network-management endpoints, persist link failures, bound AVL cache size, and measure performance against large real datasets. These are **not claimed as implemented features**.
 
 ---
 
-## 📺 Part 3 demonstration
+## 📺 Demonstration and Project Information
 
 **Project demonstration:** https://youtu.be/__WHbjxK4X0
 
-- **Student:** Ghanief Batchelor
-- **Student number:** ST10440143
-- **Module:** PROG7312 POE
+**Module:** PROG7312 — Part 3 (Trees, Graphs and MST)
+
+**Student:** Ghanief Batchelor  
+**Student number:** ST10440143
