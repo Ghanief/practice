@@ -301,28 +301,19 @@ These actions are simulations. Disabling a wireless connection in Network Topolo
 
 ---
 
-## 4. Architecture and data flow
+## 4. Architecture and Data Flow
 
-```mermaid
-flowchart TD
-    A[Simulated sensors and manual readings] --> B[ASP.NET Core Web API]
-    B --> C[Telemetry processing]
-    C --> D[(SQL Server)]
-    C --> E[LiveStreamStore]
-    E --> F[Command Stream and predictive insights]
-    E --> G[MeshTopologyService]
-    H[MeshLinkStateStore] --> G
-    G --> I[BFS reachability and hop routes]
-    G --> J[Prim's MST]
-    D --> K[TelemetryAvlIndex]
-    K --> L[Historical time-range results]
-    I --> M[Network Topology API]
-    J --> M
-    L --> N[Historical Network API]
-    F --> O[ASP.NET Core MVC frontend]
-    M --> O
-    N --> O
-```
+---
+
+<p align="center">
+  <img
+    src="https://github.com/user-attachments/assets/d4bb1e37-e620-4cd0-b0de-57800cd1e19d"
+    alt="Smart-X IoT Gateway Architecture and Data Flow"
+    width="550"
+  />
+</p>
+
+---
 
 **Live routing:** `LiveStreamStore` supplies sensor identifiers and online status. `MeshTopologyService` builds candidate links and an adjacency list, removes unavailable links, runs BFS and Prim's algorithm, and returns a network snapshot for the MVC graph.
 
@@ -398,15 +389,15 @@ prog7312-2026-poe-ghanief/
 │   │   │   ├── sensors.js
 │   │   │   ├── telemetry.js
 │   │   │   ├── files.js
-│   │   │   ├── command-stream.js
-│   │   │   ├── predictive-insights.js
-│   │   │   └── network-topology.js           
+│   │   │   ├── command-stream.js             # Part 2
+│   │   │   ├── predictive-insights.js        # Part 2
+│   │   │   └── network-topology.js           # Part 3
 │   │   └── css/
 │   │       ├── dashboard.css
 │   │       ├── sensors.css
 │   │       ├── telemetry.css
-│   │       ├── command-stream.css
-│   │       └── network-topology.css
+│   │       ├── command-stream.css            # Part 2
+│   │       └── network-topology.css          # Part 3
 │   ├── Properties/launchSettings.json
 │   ├── SmartXMvc.csproj
 │   ├── Program.cs
@@ -421,26 +412,30 @@ prog7312-2026-poe-ghanief/
 
 Different features need different ways of organising data. A queue is suited to incoming work, a dictionary is suited to finding a known device, a graph is suited to examining connections, and an AVL tree is suited to searching timestamps.
 
-| Data structure | Main file | What it solves |
+
+| Data structure / Algorithm | Main file | What it solves |
 |---|---|---|
 | `Queue<T>` | `TelemetryDispatchService.cs` | Processes normal readings in first-in, first-out order |
 | `PriorityQueue<T, int>` | `TelemetryDispatchService.cs` | Handles critical telemetry before normal queued work |
 | `Stack<T>` | `CommandOperationsService.cs` | Undoes the most recent eligible command first |
 | `Dictionary<TKey, TValue>` | `LiveStreamStore.cs` | Looks up live devices quickly by ID |
-| `SortedDictionary<TKey, TValue>` | `LiveStreamStore.cs` | Keeps a live trend ordered by time |
-| `HashSet<T>` | `LiveStreamStore.cs` | Avoids duplicate alert or disconnected IDs |
+| `SortedDictionary<TKey, TValue>` | `LiveStreamStore.cs` | Keeps live telemetry trends ordered by time |
+| `HashSet<T>` | `LiveStreamStore.cs` | Avoids duplicate alert or disconnected device IDs |
 | `Queue<DateTime>` | `PatternActivityStore.cs` | Tracks searches within a five-minute window |
-| **Adjacency list: `Dictionary<string, List<Link>>`** | `MeshTopologyService.cs` | Finds a sensor's neighbouring links without checking every possible pair |
-| `List<Link>` | `MeshTopologyService.cs` | Holds candidate and selected graph connections |
-| **BFS queue: `Queue<string>`** | `MeshTopologyService.cs` | Visits sensors one hop level at a time |
-| **MST min-heap: `PriorityQueue<Link, (int Cost, string From, string To)>`** | `MeshTopologyService.cs` | Retrieves the cheapest eligible connection efficiently |
-| `HashSet<string>` | `MeshTopologyService.cs` | Tracks vertices already in the MST and avoids cycles |
-| `Dictionary<string, string?>` | `MeshTopologyService.cs` | Records parent links so BFS and MST routes can be reconstructed |
-| `HashSet<string>` | `MeshLinkStateStore.cs` | Stores disabled connections without duplicates |
-| **Per-device index: `Dictionary<string, DeviceIndex>`** | `TelemetryAvlIndex.cs` | Locates the correct sensor's historical tree without searching other sensors' readings |
-| `TelemetryAvlIndex.cs` | `TelemetryAvlIndex.cs` | Keeps timestamped readings balanced for efficient range queries |
-| `TelemetryAvlIndex.cs` | `TelemetryAvlIndex.cs` | Supports ordered traversal and automatic balancing |
-| `TelemetryAvlIndex.cs` | `TelemetryAvlIndex.cs` | Orders readings and retains records with matching timestamps |
+| **Weighted Graph** | `MeshTopologyService.cs` | Represents sensors and the gateway as vertices connected by wireless links with simulated energy costs |
+| **Adjacency List: `Dictionary<string, List<Link>>`** | `MeshTopologyService.cs` | Stores each sensor's neighbouring connections for efficient graph traversal |
+| `List<Link>` | `MeshTopologyService.cs` | Stores available wireless connections and selected MST links |
+| **Breadth-First Search (BFS)** | `MeshTopologyService.cs` | Identifies reachable sensors and finds routes with the fewest hops |
+| **BFS Queue: `Queue<string>`** | `MeshTopologyService.cs` | Explores sensors one hop level at a time |
+| **Prim's Minimum Spanning Tree (MST)** | `MeshTopologyService.cs` | Connects all gateway-reachable sensors using links with the lowest total estimated energy cost |
+| **MST Min-Heap: `PriorityQueue<Link, (int Cost, string From, string To)>`** | `MeshTopologyService.cs` | Efficiently selects the lowest-cost eligible connection |
+| `HashSet<string>` | `MeshTopologyService.cs` | Tracks vertices already included in the MST and prevents cycles |
+| `Dictionary<string, string?>` | `MeshTopologyService.cs` | Stores parent connections to reconstruct BFS and MST routes |
+| `HashSet<string>` | `MeshLinkStateStore.cs` | Tracks disabled wireless connections without duplicates |
+| `Dictionary<string, DeviceIndex>`** | `TelemetryAvlIndex.cs` | Provides quick access to each sensor's historical telemetry tree |
+| `TelemetryAvlIndex.cs` | Keeps historical readings balanced for efficient timestamp-range searches |
+| `TelemetryAvlIndex.cs` | Store readings with left and right child references for tree traversal and balancing |
+| `TelemetryAvlIndex.cs` | Orders readings by timestamp and distinguishes records with identical timestamps |
 
 The next two sections show how the Part 3 structures work together, why they were chosen and code snippets from the project.
 
@@ -574,8 +569,6 @@ while (minHeap.TryDequeue(out var edge, out _))
 - The **list** records which edges were selected and enables the total simulated energy cost to be calculated.
 
 **Why it helps:** A min-heap makes repeated minimum-edge selection efficient. With this adjacency-list implementation and lazy priority queue, Prim's algorithm runs in approximately **O(E log E)** time and avoids the much slower approach of rescanning all candidate links to find each minimum.
-
-**Important:** The MST is a minimum-cost network *as a whole*. A green MST line is not necessarily the cheapest possible individual route for every sensor. The graph's mJ values explain which connections Prim's algorithm compares.
 
 ---
 
@@ -892,9 +885,9 @@ The backend serves these endpoints. The MVC frontend calls the API through `Smar
 
 --- 
 
-## 13.🎓 Demonstration video and author
+## 13.🎓 Video and author
 
-**Project demonstration:**  [link]
+**Video demonstration:**  https://youtu.be/e-mSqwywr38
 
 - **Student:** Ghanief Batchelor
 - **Student number:** ST10440143
