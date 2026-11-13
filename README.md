@@ -412,7 +412,6 @@ prog7312-2026-poe-ghanief/
 
 Different features need different ways of organising data. A queue is suited to incoming work, a dictionary is suited to finding a known device, a graph is suited to examining connections, and an AVL tree is suited to searching timestamps.
 
-
 | Data structure / Algorithm | Main file | What it solves |
 |---|---|---|
 | `Queue<T>` | `TelemetryDispatchService.cs` | Processes normal readings in first-in, first-out order |
@@ -454,13 +453,13 @@ A graph represents these relationships clearly:
 - **Weights:** Estimated energy cost for one packet on each link.
 - **Active links:** Links with both endpoints online and not disabled by the simulator.
 
-The graph is deliberately **sparse**. Sensors form a ring with alternate links; a smaller number connect directly to the gateway. For a demonstration with **15 sensors**, the topology normally has **16 vertices and 34 candidate links** (15 ring, 15 alternate and 4 gateway connections).
+. Sensors form a ring with alternate links; a smaller number connect directly to the gateway. For a demonstration with **15 sensors**, the topology normally has **16 vertices and 34 candidate links** (15 ring, 15 alternate and 4 gateway connections).
 
 **BFS** answers: *Which sensors can reach the gateway, and which route uses the fewest links?*
 
 **Prim's MST** answers: *Which links connect all gateway-reachable vertices with the smallest possible total selected weight, without creating loops?*
 
-For a fully connected graph of 16 vertices, the MST contains exactly **15 edges**, although the original graph offers 34 candidates. An MST minimises the **sum of its selected edge weights**. It does **not** promise that every individual sensor gets its cheapest route to the gateway.
+For a fully connected graph of 16 vertices, the MST contains exactly **15 edges**, although the original graph offers 34 candidates. An MST minimises the **sum of its selected edge weights**. 
 
 ---
 
@@ -526,7 +525,7 @@ private static (List<string> Order, Dictionary<string, string?> Parent) BreadthF
 
 **Role:** The queue visits sensors one hop level at a time. The `parent` dictionary records how each discovered sensor was reached, allowing the MVC page to display a route. A device not discovered from the gateway is unreachable through the current active links.
 
-**Why it helps:** BFS takes **O(V + E)** time with an adjacency list. Every reachable vertex is discovered once and every reachable link is examined from its endpoints. It avoids testing every possible path. BFS finds **fewest-hop routes**, not lowest routes, because it does not compare edge weights.
+**Why it helps:** BFS takes **O(V + E)** time with an adjacency list. Every reachable vertex is discovered once and every reachable link is examined from its endpoints. It avoids testing every possible path. BFS finds **fewest-hop routes**.
 
 ---
 
@@ -609,7 +608,7 @@ The distance variations are generated consistently from a pair of device identif
 
 ### 7.6 ⛔ Simulated link failure and recovery
 
-`MeshLinkStateStore.cs` uses a `HashSet<string>` of canonical link keys so a connection can be disabled without being stored twice. The key treats `A-B` and `B-A` as the same undirected link.
+`MeshLinkStateStore.cs` uses a `HashSet<string>` of canonical link keys so a connection can be disabled without being stored twice. 
 
 Code from `MeshLinkStateStore.cs`:
 
@@ -644,8 +643,6 @@ public void Reset()
 
 SQL Server stores historical readings, but the Part 3 feature also demonstrates a custom **in-memory AVL Tree** for searching those records by timestamp. Imagine a sensor has thousands of readings and the user asks:
 
-> Show the temperature readings recorded between **14:00 and 16:00**.
-
 Searching an ordinary unsorted list would mean checking each reading individually, even those recorded far outside the requested interval. An unbalanced Binary Search Tree could also become a long chain when readings arrive in timestamp order.
 
 An **AVL Tree** keeps its height balanced as readings are added. It can skip branches that cannot contain timestamps within the requested interval. This makes repeat in-memory searches more efficient than scanning a large list.
@@ -677,7 +674,7 @@ private readonly Dictionary<string, DeviceIndex> _byDevice =
     new(StringComparer.OrdinalIgnoreCase);
 ```
 
-**Role:** The dictionary finds the selected sensor's tree quickly. Each node holds a telemetry record, references to its left and right children, and height information for balancing. `HighestId` helps load only newly inserted SQL records after the initial index build.
+**Role:** The dictionary finds the selected sensor's tree quickly. Each node holds a telemetry record, references to its left and right children, and height information for balancing.
 
 The comparison key uses both timestamp and database record ID:
 
@@ -773,7 +770,7 @@ Start the API and MVC application using Section 2. These tests use the **Network
 4. Inspect the displayed cost of a link in **mJ** by reading its label or selecting the connection.
 5. With **15 online sensors**, expect **16 vertices** and usually **34 candidate links**. Counts change if a different number of sensors exists.
 
-**Expected result:** The graph is visible, shows simulated connection weights and distinguishes available, MST-selected and disabled links. Counts describe the current data, not a hard-coded number of physical devices.
+**Expected result:** The graph is visible, shows simulated connection weights and distinguishes available, MST-selected and disabled links. 
 
 ---
 
@@ -784,7 +781,7 @@ Start the API and MVC application using Section 2. These tests use the **Network
 3. Inspect the highlighted route and the **BFS Traversal** panel.
 4. Count the connections along the route and compare that count with the displayed number of hops.
 
-**Expected result:** BFS starts from the gateway, visits reachable devices and highlights a route with the fewest number of links. The hop count matches the number of edges in that route. The mJ value does not control BFS selection.
+**Expected result:** BFS starts from the gateway, visits reachable devices and highlights a route with the fewest number of links. The hop count matches the number of edges in that route. 
 
 ---
 
@@ -797,7 +794,7 @@ Start the API and MVC application using Section 2. These tests use the **Network
 5. If all **16 vertices** are connected, verify that the MST has **15 selected edges**.
 6. Compare the visible mJ costs of selected and unselected candidate links.
 
-**Expected result:** The selected links form a connected tree without cycles and minimise the **total** selected edge cost. Changing the selected sensor highlights a route but does not change the computed MST itself.
+**Expected result:** The selected links form a connected tree without cycles and minimise the **total** selected edge cost. 
 
 ---
 
@@ -821,7 +818,7 @@ Start the API and MVC application using Section 2. These tests use the **Network
 3. Click **Reset all**.
 4. Recalculate or refresh the network.
 
-**Expected result:** Disabled links are restored and network results are recalculated. No SQL telemetry or sensor registration is deleted.
+**Expected result:** Disabled links are restored and network results are recalculated. 
 
 ---
 
@@ -846,7 +843,7 @@ Start the API and MVC application using Section 2. These tests use the **Network
 3. Run a valid wider query with many readings.
 4. If the result limit is reached, check whether the response reports `truncated`.
 
-**Expected result:** Invalid time ranges are rejected. The backend accepts a `limit` between **1 and 500**; the MVC history query currently requests **200** readings. A truncated result does not mean the sensor has only that many stored readings.
+**Expected result:** Invalid time ranges are rejected. The backend accepts a `limit` between **1 and 500**; the MVC history query currently requests **200** readings.
 
 ---
 
